@@ -89,7 +89,7 @@ public class GeneralPlanarShadowPass : ScriptableRenderPass
                 cmd.Blit(null, BuiltinRenderTextureType.CurrentActive, shadowMat, 1);
                 var pos = light.transform.position;
                 cmd.SetGlobalVector(s_PlanarShadowLightPos, new Vector4(pos.x, pos.y, pos.z));
-                var color = light.color * light.intensity * light.shadowStrength;
+                var color = light.color * Mathf.Sqrt(light.intensity) * light.shadowStrength;
                 cmd.SetGlobalColor(s_PlanarShadowLightColor, color);
                 var param = new Vector4(light.range, light.innerSpotAngle, light.outerSpotAngle, 0);
                 cmd.SetGlobalVector(s_PlanarShadowLightParam, param);
@@ -113,7 +113,7 @@ public class GeneralPlanarShadowPass : ScriptableRenderPass
                 cmd.SetGlobalVector(s_PlanarShadowLightDir, new Vector4(dir.x, dir.y, dir.z));
                 var pos = light.transform.position;
                 cmd.SetGlobalVector(s_PlanarShadowLightPos, new Vector4(pos.x, pos.y, pos.z));
-                var color = light.color * light.intensity * light.shadowStrength;
+                var color = light.color * Mathf.Sqrt(light.intensity) * light.shadowStrength;
                 cmd.SetGlobalColor(s_PlanarShadowLightColor, color);
                 var param = new Vector4(light.range, Mathf.Cos(light.innerSpotAngle * Mathf.Deg2Rad * 0.5f), Mathf.Cos(light.outerSpotAngle * Mathf.Deg2Rad * 0.5f), 0);
                 cmd.SetGlobalVector(s_PlanarShadowLightParam, param);

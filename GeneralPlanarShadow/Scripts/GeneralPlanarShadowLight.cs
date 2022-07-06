@@ -23,6 +23,7 @@ public class GeneralPlanarShadowLight : MonoBehaviour
     public Color color = new Color(255 / 255f, 244 / 255f, 214 / 255f);
     public float intensity = 1;
     public float shadowStrength = 1;
+    private Light thisLight;
 
     public static void Foreach(Action<GeneralPlanarShadowLight> func)
     {
@@ -42,29 +43,25 @@ public class GeneralPlanarShadowLight : MonoBehaviour
 
     void OnEnable()
     {
-        var light = GetComponent<Light>();
-        if (light != null && (int)light.type <= 2)
-        {
-            type = (LightType)((int)light.type);
-            range = light.range;
-            innerSpotAngle = light.innerSpotAngle;
-            outerSpotAngle = light.spotAngle;
-            color = light.color;
-            intensity = light.intensity;
-        }
+        thisLight = GetComponent<Light>();
         activeLights.Add(this);
     }
 
-#if UNITY_EDITOR
     void Update()
     {
-        OnEnable();
+        if (thisLight != null && (int)thisLight.type <= 2)
+        {
+            type = (LightType)((int)thisLight.type);
+            range = thisLight.range;
+            innerSpotAngle = thisLight.innerSpotAngle;
+            outerSpotAngle = thisLight.spotAngle;
+            color = thisLight.color;
+            intensity = thisLight.intensity;
+        }
     }
-#endif
 
     void OnDisable()
     {
         activeLights.Remove(this);
     }
-
 }

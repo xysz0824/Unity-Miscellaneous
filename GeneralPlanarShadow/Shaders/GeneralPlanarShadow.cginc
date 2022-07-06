@@ -40,9 +40,13 @@ float4 ProjectPlanarShadowVertex(float4 vertex)
 fixed4 GetPlanarShadowLightColor(float3 worldPos)
 {
     fixed4 col = 1;
+#if DIRECITONAL_PLANAR_SHADOW
+    col.rgb = _PlanarShadowLightColor.rgb / 2.f;
+    fixed scale = saturate(-normalize(_PlanarShadowLightDir).y);
+    col.rgb *= scale;
+#elif POINT_PLANAR_SHADOW || SPOT_PLANAR_SHADOW
     col.rgb = _PlanarShadowLightColor.rgb / 3.f;
-#if POINT_PLANAR_SHADOW || SPOT_PLANAR_SHADOW
-    fixed scale = distance(worldPos, _PlanarShadowLightPos) / _PlanarShadowLightParam.r * 1.5;
+    fixed scale = distance(worldPos, _PlanarShadowLightPos) / _PlanarShadowLightParam.r * 1.4f;
     scale = saturate(1 - scale);
     scale *= scale;
     col.rgb *= scale;
