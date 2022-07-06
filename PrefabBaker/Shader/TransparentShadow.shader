@@ -18,6 +18,7 @@ Shader "PrefabBaker/Transparent Shadow"
         LOD 100
 
         Blend SrcAlpha OneMinusSrcAlpha
+        ZWrite Off
         
         Pass
         {
