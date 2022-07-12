@@ -4,10 +4,14 @@ using UnityEngine;
 
 [DisallowMultipleComponent]
 [ExecuteAlways]
-public class PrefabBakerLightmapMuter : MonoBehaviour
+public class PrefabLightmapMuter : MonoBehaviour
 {
     static bool muting;
-    public static bool Muting => muting;
+    public static bool Muting 
+    {
+        get => muting;
+        set => muting = value;
+    }
     
     void OnEnable()
     {

@@ -37,16 +37,16 @@ float4 ProjectPlanarShadowVertex(float4 vertex)
 #endif
 }
 
-fixed4 GetPlanarShadowLightColor(float3 worldPos)
+half4 GetPlanarShadowLightColor(float3 worldPos)
 {
-    fixed4 col = 1;
+    half4 col = 1;
 #if DIRECITONAL_PLANAR_SHADOW
     col.rgb = _PlanarShadowLightColor.rgb / 2.f;
-    fixed scale = saturate(-normalize(_PlanarShadowLightDir).y);
+    half scale = saturate(-normalize(_PlanarShadowLightDir).y);
     col.rgb *= scale;
 #elif POINT_PLANAR_SHADOW || SPOT_PLANAR_SHADOW
     col.rgb = _PlanarShadowLightColor.rgb / 3.f;
-    fixed scale = distance(worldPos, _PlanarShadowLightPos) / _PlanarShadowLightParam.r * 1.4f;
+    half scale = distance(worldPos, _PlanarShadowLightPos) / _PlanarShadowLightParam.r * 1.4f;
     scale = saturate(1 - scale);
     scale *= scale;
     col.rgb *= scale;
@@ -62,4 +62,61 @@ fixed4 GetPlanarShadowLightColor(float3 worldPos)
     return col;
 }
 
+CBUFFER_START(UnityPerMaterial)
+half4 _BaseColor;
+half4 _BaseMap_ST;
+half _Cutoff;
+CBUFFER_END
+
+struct Attributes
+{
+    float4 vertex : POSITION;
+    float2 uv : TEXCOORD0;
+    UNITY_VERTEX_INPUT_INSTANCE_ID
+};
+
+struct Varyings
+{
+    float2 uv : TEXCOORD0;
+    float3 worldPos : TEXCOORD1;
+    float4 vertex : SV_POSITION;
+};
+
+Varyings vert (Attributes v)
+{
+    Varyings o;
+    UNITY_SETUP_INSTANCE_ID(v);
+
+    float4 worldPos = ProjectPlanarShadowVertex(v.vertex);
+    o.worldPos = worldPos.xyz;
+    o.vertex = TransformWorldToHClip(o.worldPos);
+    o.uv = v.uv;
+    return o;
+}
+
+Varyings vertAlphaTest (Attributes v)
+{
+    Varyings o;
+    UNITY_SETUP_INSTANCE_ID(v);
+
+    float4 worldPos = ProjectPlanarShadowVertex(v.vertex);
+    o.worldPos = worldPos.xyz;
+    o.vertex = TransformWorldToHClip(o.worldPos);
+    o.uv = TRANSFORM_TEX(v.uv, _BaseMap);
+    return o;
+}
+
+half4 frag (Varyings i) : SV_Target
+{
+    UNITY_SETUP_INSTANCE_ID(i);
+
+    return GetPlanarShadowLightColor(i.worldPos);
+}
+
+half4 fragAlphaTest (Varyings i) : SV_Target
+{
+    UNITY_SETUP_INSTANCE_ID(i);
+    Alpha(SampleAlbedoAlpha(i.uv, TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap)).a, _BaseColor, _Cutoff);
+    return GetPlanarShadowLightColor(i.worldPos);
+}
 #endif

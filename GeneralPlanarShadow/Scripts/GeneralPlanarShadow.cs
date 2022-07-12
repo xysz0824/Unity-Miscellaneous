@@ -11,6 +11,7 @@ public class GeneralPlanarShadow : ScriptableRendererFeature
     {
         public float ProjectivePlaneY = 0.03f;
         public int ShadowStencilRef = 128;
+        public bool useEmbeddedCasterPass = false;
         public RenderPassEvent Event = RenderPassEvent.AfterRenderingOpaques;
         public LayerMask LayerMask;
         public string[] LightModeTags;

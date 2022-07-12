@@ -34,23 +34,36 @@ public class GeneralPlanarShadowPass : ScriptableRenderPass
         }
         else
         {
-            shaderTagIdList.Add(new ShaderTagId("SRPDefaultUnlit"));
-            shaderTagIdList.Add(new ShaderTagId("UniversalForward"));
-            shaderTagIdList.Add(new ShaderTagId("UniversalForwardOnly"));
-            shaderTagIdList.Add(new ShaderTagId("LightweightForward"));
+            if (setings.useEmbeddedCasterPass)
+            {
+                shaderTagIdList.Add(new ShaderTagId("PlanarShadowCaster"));
+                shaderTagIdList.Add(new ShaderTagId("PlanarShadowCasterAlphaTest"));
+            }
+            else
+            {
+                shaderTagIdList.Add(new ShaderTagId("SRPDefaultUnlit"));
+                shaderTagIdList.Add(new ShaderTagId("UniversalForward"));
+                shaderTagIdList.Add(new ShaderTagId("UniversalForwardOnly"));
+                shaderTagIdList.Add(new ShaderTagId("LightweightForward"));
+            }
         }
-        if (shadowMat != null) Object.Destroy(shadowMat);
-        shadowMat = new Material(Shader.Find("Mobile Friend/GeneralPlanarShadow"));
         filteringSettings = new FilteringSettings(RenderQueueRange.all, setings.LayerMask);
-        renderStateBlock = new RenderStateBlock(RenderStateMask.Nothing);
+        renderStateBlock = new RenderStateBlock(RenderStateMask.Stencil);
+        var stencilState = StencilState.defaultValue;
+        stencilState.enabled = true;
+        stencilState.SetCompareFunction(CompareFunction.NotEqual);
+        stencilState.SetPassOperation(StencilOp.Replace);
+        renderStateBlock.stencilReference = setings.ShadowStencilRef;
+        renderStateBlock.stencilState = stencilState;
     }
 
     public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
     {
         if (GeneralPlanarShadowLight.ActiveLights.Count == 0) return;
         DrawingSettings drawingSettings = CreateDrawingSettings(shaderTagIdList, ref renderingData, SortingCriteria.CommonTransparent);
-        drawingSettings.overrideMaterial = shadowMat;
+        drawingSettings.overrideMaterial = setings.useEmbeddedCasterPass ? null : shadowMat;
         drawingSettings.overrideMaterialPassIndex = 0;
+        if (shadowMat == null) shadowMat = new Material(Shader.Find("Mobile Friend/GeneralPlanarShadow"));
         shadowMat.SetInt(s_StencilRef, setings.ShadowStencilRef);
         CommandBuffer cmd = CommandBufferPool.Get();
         using (new ProfilingScope(cmd, m_ProfilingSampler))
@@ -86,7 +99,7 @@ public class GeneralPlanarShadowPass : ScriptableRenderPass
                     continue;
                 }
                 hasLight = true;
-                cmd.Blit(null, BuiltinRenderTextureType.CurrentActive, shadowMat, 1);
+                cmd.Blit(null, BuiltinRenderTextureType.CurrentActive, shadowMat, 2);
                 var pos = light.transform.position;
                 cmd.SetGlobalVector(s_PlanarShadowLightPos, new Vector4(pos.x, pos.y, pos.z));
                 var color = light.color * Mathf.Sqrt(light.intensity) * light.shadowStrength;
@@ -108,7 +121,7 @@ public class GeneralPlanarShadowPass : ScriptableRenderPass
                     continue;
                 }
                 hasLight = true;
-                cmd.Blit(null, BuiltinRenderTextureType.CurrentActive, shadowMat, 1);
+                cmd.Blit(null, BuiltinRenderTextureType.CurrentActive, shadowMat, 2);
                 var dir = light.transform.forward;
                 cmd.SetGlobalVector(s_PlanarShadowLightDir, new Vector4(dir.x, dir.y, dir.z));
                 var pos = light.transform.position;
@@ -124,7 +137,7 @@ public class GeneralPlanarShadowPass : ScriptableRenderPass
             cmd.DisableShaderKeyword("SPOT_PLANAR_SHADOW");
             if (hasLight)
             {
-                cmd.Blit(null, BuiltinRenderTextureType.CurrentActive, shadowMat, 1);
+                cmd.Blit(null, BuiltinRenderTextureType.CurrentActive, shadowMat, 2);
                 hasLight = false;
             }
         }

@@ -8,7 +8,7 @@ using UnityEditor.SceneManagement;
 #endif
 
 [ExecuteAlways]
-public class PrefabBakerLightmapInfo : MonoBehaviour
+public class PrefabLightmapInfo : MonoBehaviour
 {
     static Dictionary<string, Action> enableTriggers = new Dictionary<string, Action>();
     static Dictionary<string, Action> disableTriggers = new Dictionary<string, Action>();
@@ -107,7 +107,7 @@ public class PrefabBakerLightmapInfo : MonoBehaviour
 
     void OnEnable()
     {
-        mutingOnEnable = PrefabBakerLightmapMuter.Muting;
+        mutingOnEnable = PrefabLightmapMuter.Muting;
         if (mutingOnEnable) return;
 #if UNITY_EDITOR
         EditorSceneManager.activeSceneChangedInEditMode -= OnActiveSceneChanged;

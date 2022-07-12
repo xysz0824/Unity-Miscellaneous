@@ -309,10 +309,10 @@ public class PrefabBakerEditorWindow : EditorWindow
             if (rootGameObject.name == PrefabBakerConfig.ROOT_NAME && rootGameObject.hideFlags == (HideFlags)11)
             {
                 root = rootGameObject;
-                var muter = root.GetComponent<PrefabBakerLightmapMuter>();
+                var muter = root.GetComponent<PrefabLightmapMuter>();
                 if (muter == null)
                 {
-                    muter = root.AddComponent<PrefabBakerLightmapMuter>();
+                    muter = root.AddComponent<PrefabLightmapMuter>();
                 }
                 muter.enabled = true;
                 config = root.GetComponent<PrefabBakerConfig>();
@@ -702,178 +702,10 @@ public class PrefabBakerEditorWindow : EditorWindow
     bool lightmapsFoldout = true;
     bool exportSettingFoldout = true;
 
-    Rect[] PackTextures(Texture2D atlas, List<Texture2D> textures)
-    {
-        var offset = new Vector2();
-        var rects = new Rect[textures.Count];
-        var textureSort = textures.ToArray();
-        System.Array.Sort(textureSort, (a, b) =>
-        {
-            int areaA = a.width * a.height;
-            int areaB = b.width * b.height;
-            return areaB - areaA;
-        });
-        var points = new List<Vector2>();
-        for (int i = 0; i < textureSort.Length; ++i)
-        {
-            var width = textureSort[i].width;
-            var height = textureSort[i].height;
-            if (points.Count > 0)
-            {
-                var minCost = float.MaxValue;
-                var minCostPoint = new Vector2();
-                foreach (var point in points)
-                {
-                    var xLeft = point.x + width - atlas.width;
-                    var yLeft = point.y + height - atlas.height;
-                    if (xLeft > 0 || yLeft > 0) continue;
-                    if (minCost >= xLeft + yLeft)
-                    {
-                        minCost = xLeft + yLeft;
-                        minCostPoint = point;
-                    }
-                }
-                offset = minCostPoint;
-                for (int k = 0; k < points.Count; ++k)
-                {
-                    if (points[k] == offset)
-                    {
-                        points.RemoveAt(k);
-                        k--;
-                    }
-                }
-            }
-            var pixels = textureSort[i].GetPixels();
-            atlas.SetPixels((int)offset.x, (int)offset.y, width, height, pixels);
-            int index = textures.IndexOf(textureSort[i]);
-            rects[index] = new Rect(offset.x / atlas.width, offset.y / atlas.height, width / (float)atlas.width, height / (float)atlas.height);
-            points.Add(new Vector2(offset.x, offset.y + height));
-            points.Add(new Vector2(offset.x + width, offset.y));
-        }
-        return rects;
-    }
-
     void ExportToPrefabs()
     {
-        var folder = EditorUtility.SaveFolderPanel("Save Lightmaps To Folder", "", "");
-        if (string.IsNullOrEmpty(folder)) return;
-        for (int i = 0; i < objects.Count; ++i)
-        {
-            if (objects[i] == null || objects[i].name.Contains(MISSING_FLAG_HEADER)) continue;
-            EditorUtility.DisplayProgressBar("Importing Prefabs", objects[i].name, i / (float)objects.Count * 100.0f);
-            var path = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(objects[i]);
-            var root = PrefabUtility.LoadPrefabContents(path);
-            var infos = root.GetComponentsInChildren<PrefabBakerLightmapInfo>();
-            foreach (var info in infos)
-            {
-                if (info.infoTag.Trim() != config.exportInfoTag) continue;
-                if (info.lightmap != null)
-                {
-                    AssetDatabase.DeleteAsset(AssetDatabase.GetAssetPath(info.lightmap));
-                }
-                GameObject.DestroyImmediate(info);
-            }
-            PrefabUtility.SaveAsPrefabAsset(root, path);
-            PrefabUtility.UnloadPrefabContents(root);
-        }
-        var atlasDict = new Dictionary<string, Texture2D>();
-        var atlasRectDict = new Dictionary<string, Rect>();
-        if (config.packLightmaps)
-        {
-            List<Texture2D> lightmaps = new List<Texture2D>();
-            int area = 0;
-            int id = 0;
-            for (int i = 0; i < LightmapSettings.lightmaps.Length; ++i)
-            {
-                var lightmap = LightmapSettings.lightmaps[i].lightmapColor;
-                var path = AssetDatabase.GetAssetPath(lightmap);
-                var importer = AssetImporter.GetAtPath(path) as TextureImporter;
-                importer.isReadable = true;
-                importer.textureType = TextureImporterType.Default;
-                importer.textureCompression = TextureImporterCompression.Uncompressed;
-                importer.SaveAndReimport();
-                area += lightmap.height * lightmap.width;
-                lightmaps.Add(lightmap);
-                if (area >= config.maxAtlasSize * config.maxAtlasSize || i == LightmapSettings.lightmaps.Length - 1)
-                {
-                    area = Mathf.Min(area, config.maxAtlasSize * config.maxAtlasSize);
-                    var size = (int)Mathf.Pow(2, Mathf.Ceil(Mathf.Log(Mathf.Sqrt(area), 2)));
-                    var atlas = new Texture2D(size, size, GraphicsFormat.R16G16B16A16_SFloat, TextureCreationFlags.None);
-                    var rects = PackTextures(atlas, lightmaps);
-                    var tag = string.IsNullOrEmpty(config.exportInfoTag) ? "" : "_" + config.exportInfoTag;
-                    var newName = "/LightmapAtlas-" + id + tag + ".exr";
-                    var newPath = folder.Substring(Application.dataPath.Length - 6) + newName;
-                    var bytes = atlas.EncodeToEXR();
-                    var fullPath = folder + newName;
-                    File.WriteAllBytes(fullPath, bytes);
-                    AssetDatabase.SaveAssets();
-                    AssetDatabase.ImportAsset(newPath);
-                    importer = AssetImporter.GetAtPath(newPath) as TextureImporter;
-                    importer.textureType = TextureImporterType.Lightmap;
-                    importer.textureCompression = TextureImporterCompression.CompressedHQ;
-                    importer.SaveAndReimport();
-                    atlas = AssetDatabase.LoadAssetAtPath<Texture2D>(newPath);
-                    for (int k = 0; k < lightmaps.Count; ++k)
-                    {
-                        atlasDict[lightmaps[k].name] = atlas;
-                        atlasRectDict[lightmaps[k].name] = rects[k];
-                    }
-                    id++;
-                    area = 0;
-                    lightmaps.Clear();
-                }
-            }
-            for (int i = 0; i < LightmapSettings.lightmaps.Length; ++i)
-            {
-                var lightmap = LightmapSettings.lightmaps[i].lightmapColor;
-                var path = AssetDatabase.GetAssetPath(lightmap);
-                var importer = AssetImporter.GetAtPath(path) as TextureImporter;
-                importer.isReadable = false;
-                importer.textureType = TextureImporterType.Lightmap;
-                importer.textureCompression = TextureImporterCompression.CompressedHQ;
-                importer.SaveAndReimport();
-            }
-        }
-        var texDict = new Dictionary<string, Texture2D>();
-        for (int i = 0; i < objects.Count; ++i)
-        {
-            if (objects[i] == null || objects[i].name.Contains(MISSING_FLAG_HEADER)) continue;
-            var renderers = objects[i].GetComponentsInChildren<Renderer>();
-            foreach (var renderer in renderers)
-            {
-                if (renderer.lightmapIndex < 0 || renderer.lightmapIndex >= LightmapSettings.lightmaps.Length) continue;
-                var info = renderer.gameObject.AddComponent<PrefabBakerLightmapInfo>();
-                info.infoTag = config.exportInfoTag;
-                if (!string.IsNullOrEmpty(info.infoTag)) info.enabled = false;
-                var lightmap = LightmapSettings.lightmaps[renderer.lightmapIndex].lightmapColor;
-                if (atlasDict.ContainsKey(lightmap.name))
-                {
-                    info.lightmap = atlasDict[lightmap.name];
-                    var scaleOffset = new Vector4(atlasRectDict[lightmap.name].width, atlasRectDict[lightmap.name].height,
-                        atlasRectDict[lightmap.name].x, atlasRectDict[lightmap.name].y);
-                    scaleOffset.x *= renderer.lightmapScaleOffset.x;
-                    scaleOffset.y *= renderer.lightmapScaleOffset.y;
-                    scaleOffset.z += renderer.lightmapScaleOffset.z * atlasRectDict[lightmap.name].width;
-                    scaleOffset.w += renderer.lightmapScaleOffset.w * atlasRectDict[lightmap.name].height;
-                    info.scaleOffset = scaleOffset;
-                }
-                else
-                {
-                    info.scaleOffset = renderer.lightmapScaleOffset;
-                    if (!texDict.ContainsKey(lightmap.name))
-                    {
-                        var path = AssetDatabase.GetAssetPath(lightmap);
-                        var tag = string.IsNullOrEmpty(config.exportInfoTag) ? "" : "_" + config.exportInfoTag;
-                        var newPath = folder.Substring(Application.dataPath.Length - 6) + "/Lightmap-" + i + tag + "_" + objects[i].name + Path.GetExtension(path);
-                        AssetDatabase.CopyAsset(path, newPath);
-                        AssetDatabase.SaveAssets();
-                        AssetDatabase.ImportAsset(newPath);
-                        texDict[lightmap.name] = AssetDatabase.LoadAssetAtPath<Texture2D>(newPath);
-                    }
-                    info.lightmap = texDict[lightmap.name];
-                }
-            }
-            var addedGameObjects = PrefabUtility.GetAddedGameObjects(objects[i]);
+        PrefabLightmapExporter.ExportToPrefabs(objects, config.exportInfoTag, config.packLightmaps, config.maxAtlasSize, (obj) => {
+            var addedGameObjects = PrefabUtility.GetAddedGameObjects(obj);
             foreach (var addedGameObject in addedGameObjects)
             {
                 if (addedGameObject.instanceGameObject.name == CONTACT_QUAD_NAME)
@@ -881,56 +713,33 @@ public class PrefabBakerEditorWindow : EditorWindow
                     addedGameObject.Apply(InteractionMode.AutomatedAction);
                 }
             }
-            var addedComponents = PrefabUtility.GetAddedComponents(objects[i]);
-            foreach (var addedComponent in addedComponents)
-            {
-                if (addedComponent.instanceComponent is PrefabBakerLightmapInfo)
-                {
-                    addedComponent.Apply(InteractionMode.AutomatedAction);
-                }
-            }
-            var quad = objects[i].transform.Find(CONTACT_QUAD_NAME);
+            var quad = obj.transform.Find(CONTACT_QUAD_NAME);
             var so = new SerializedObject(quad.gameObject);
             so.FindProperty("m_StaticEditorFlags").intValue = 0;
             so.ApplyModifiedPropertiesWithoutUndo();
-            var objectOverrides = PrefabUtility.GetObjectOverrides(objects[i]);
+            var objectOverrides = PrefabUtility.GetObjectOverrides(obj);
             foreach (var objectOverride in objectOverrides)
             {
-                if (objectOverride.instanceObject.name == CONTACT_QUAD_NAME ||
-                    objectOverride.instanceObject is PrefabBakerLightmapInfo)
+                if (objectOverride.instanceObject.name == CONTACT_QUAD_NAME)
                 {
                     objectOverride.Apply(InteractionMode.AutomatedAction);
                 }
             }
             quad.gameObject.isStatic = true;
-        }
-        EditorUtility.ClearProgressBar();
+        });
     }
 
     void ClearExport()
     {
-        for (int i = 0; i < objects.Count; ++i)
-        {
-            if (objects[i] == null) continue;
-            var path = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(objects[i]);
-            var root = PrefabUtility.LoadPrefabContents(path);
+        PrefabLightmapExporter.ClearExport(objects, config.exportInfoTag, config.clearExportedLightmaps, (root) => {
             var quad = root.transform.Find(CONTACT_QUAD_NAME);
             if (config.clearGeneratedQuad && quad != null)
             {
                 GameObject.DestroyImmediate(quad.gameObject);
             }
-            var infos = root.GetComponentsInChildren<PrefabBakerLightmapInfo>();
-            foreach (var info in infos)
-            {
-                if (info.infoTag.Trim() != config.exportInfoTag) continue;
-                if (config.clearExportedLightmaps && info.lightmap != null)
-                {
-                    AssetDatabase.DeleteAsset(AssetDatabase.GetAssetPath(info.lightmap));
-                }
-                GameObject.DestroyImmediate(info);
-            }
-            PrefabUtility.SaveAsPrefabAsset(root, path);
-            PrefabUtility.UnloadPrefabContents(root);
+        });
+        for (int i = 0; i < objects.Count; ++i)
+        {
             ValidateAndRegularizeObject(objects[i]);
         }
     }

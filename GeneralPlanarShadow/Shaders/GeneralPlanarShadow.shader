@@ -2,7 +2,6 @@ Shader "Mobile Friend/GeneralPlanarShadow"
 {
     Properties
     {
-        _StencilRef("Stencil Ref", int) = 128
         // ObsoleteProperties
         [HideInInspector] _MainTex("BaseMap", 2D) = "white" {}
         [HideInInspector] _Color("Base Color", Color) = (1, 1, 1, 1)
@@ -14,10 +13,14 @@ Shader "Mobile Friend/GeneralPlanarShadow"
 
         Pass
         {
+            Name "PlanarShadowCaster"
+            Tags { "LightMode" = "PlanarShadowCaster" }
+
             ZTest LEqual
             ZWrite Off
             BlendOp RevSub
             Blend One One
+            Cull[_Cull]
 
             Stencil
             {
@@ -26,53 +29,58 @@ Shader "Mobile Friend/GeneralPlanarShadow"
                 Pass Replace
             }
 
-            CGPROGRAM
+            HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #pragma multi_compile_fog
+            #pragma multi_compile_instancing
             #pragma multi_compile DIRECITONAL_PLANAR_SHADOW POINT_PLANAR_SHADOW SPOT_PLANAR_SHADOW
 
-            #include "UnityCG.cginc"
-            #include "GeneralPlanarShadow.cginc"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl"
+            #include "GeneralPlanarShadow.hlsl"
 
-            struct appdata
-            {
-                float4 vertex : POSITION;
-                float2 uv : TEXCOORD0;
-            };
-
-            struct v2f
-            {
-                float2 uv : TEXCOORD0;
-                float3 worldPos : TEXCOORD1;
-                UNITY_FOG_COORDS(2)
-                float4 vertex : SV_POSITION;
-            };
-
-            v2f vert (appdata v)
-            {
-                v2f o;
-                float4 worldPos = ProjectPlanarShadowVertex(v.vertex);
-                o.worldPos = worldPos;
-                o.vertex = UnityWorldToClipPos(worldPos);
-                o.uv = v.uv;
-                UNITY_TRANSFER_FOG(o,o.vertex);
-                return o;
-            }
-
-            fixed4 frag (v2f i) : SV_Target
-            {
-                return GetPlanarShadowLightColor(i.worldPos);
-            }
-            ENDCG
+            ENDHLSL
         }
 
         Pass
         {
-            Name "CLEARSTENCIL"
+            Name "PlanarShadowCasterAlphaTest"
+            Tags { "LightMode" = "PlanarShadowCasterAlphaTest" }
+
+            ZTest LEqual
+            ZWrite Off
+            BlendOp RevSub
+            Blend One One
+            Cull[_Cull]
+
+            Stencil
+            {
+                Ref [_StencilRef]
+                Comp NotEqual
+                Pass Replace
+            }
+
+            HLSLPROGRAM
+            #pragma vertex vertAlphaTest
+            #pragma fragment fragAlphaTest
+            #pragma shader_feature_local_fragment _ALPHATEST_ON
+            #pragma multi_compile_instancing
+            #pragma multi_compile DIRECITONAL_PLANAR_SHADOW POINT_PLANAR_SHADOW SPOT_PLANAR_SHADOW
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl"
+            #include "GeneralPlanarShadow.hlsl"
+
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "StencilClear"
             ZTest Off
             ZWrite Off
             Blend Zero One
+            ColorMask 0
 
             Stencil
             {
@@ -81,11 +89,11 @@ Shader "Mobile Friend/GeneralPlanarShadow"
                 Pass Zero
             }
 
-            CGPROGRAM
+            HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
 
-            #include "UnityCG.cginc"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             struct appdata
             {
@@ -100,15 +108,15 @@ Shader "Mobile Friend/GeneralPlanarShadow"
             v2f vert (appdata v)
             {
                 v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
+                o.vertex = TransformObjectToHClip(v.vertex.xyz);
                 return o;
             }
 
-            fixed4 frag (v2f i) : SV_Target
+            half4 frag (v2f i) : SV_Target
             {
                 return 0;
             }
-            ENDCG
+            ENDHLSL
         }
     }
 }
