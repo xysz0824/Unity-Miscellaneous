@@ -49,6 +49,13 @@ public class PrefabLightmapExporter
                 }
             }
             var pixels = textureSort[i].GetPixels();
+            if (QualitySettings.activeColorSpace == ColorSpace.Gamma)
+            {
+                for (int k = 0; k < pixels.Length; ++k)
+                {
+                    pixels[k] = pixels[k].linear;
+                }
+            }
             atlas.SetPixels((int)offset.x, (int)offset.y, width, height, pixels);
             int index = textures.IndexOf(textureSort[i]);
             rects[index] = new Rect(offset.x / atlas.width, offset.y / atlas.height, width / (float)atlas.width, height / (float)atlas.height);
@@ -141,6 +148,8 @@ public class PrefabLightmapExporter
                 importer.SaveAndReimport();
             }
         }
+        var muting = PrefabLightmapMuter.Muting;
+        PrefabLightmapMuter.Muting = true;
         var texDict = new Dictionary<string, Texture2D>();
         for (int i = 0; i < objects.Count; ++i)
         {
@@ -200,6 +209,7 @@ public class PrefabLightmapExporter
             }
             func?.Invoke(objects[i]);
         }
+        PrefabLightmapMuter.Muting = muting;
         EditorUtility.ClearProgressBar();
     }
 

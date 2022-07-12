@@ -30,7 +30,6 @@ public class PrefabLightmapExporterWindow : EditorWindow
         window.minSize = new Vector2(400, 800);
         window.maxSize = new Vector2(800, 1200);
         window.Show();
-        PrefabLightmapMuter.Muting = true;
         EditorSceneManager.activeSceneChangedInEditMode -= window.OnSceneChanged;
         EditorSceneManager.activeSceneChangedInEditMode += window.OnSceneChanged;
     }
@@ -38,7 +37,6 @@ public class PrefabLightmapExporterWindow : EditorWindow
     void OnDestroy()
     {
         EditorSceneManager.activeSceneChangedInEditMode -= OnSceneChanged;
-        PrefabLightmapMuter.Muting = false;
     }
 
     void DrawExportPage()
@@ -73,14 +71,25 @@ public class PrefabLightmapExporterWindow : EditorWindow
         lightmapsFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(lightmapsFoldout, "Lightmaps");
         if (lightmapsFoldout)
         {
-            EditorGUILayout.LabelField("      Count", LightmapSettings.lightmaps != null ? LightmapSettings.lightmaps.Length.ToString() : "0");
-            if (LightmapSettings.lightmaps != null)
+            int count = 0;
+            for (int i = 0; i < LightmapSettings.lightmaps.Length; ++i)
+            {
+                var data = LightmapSettings.lightmaps[i];
+                if (PrefabLightmapInfo.IsPrefabLightmap(data.lightmapColor)) continue;
+                count++;
+            }
+            if (LightmapSettings.lightmaps != null && count > 0)
             {
                 for (int i = 0; i < LightmapSettings.lightmaps.Length; ++i)
                 {
                     var data = LightmapSettings.lightmaps[i];
+                    if (PrefabLightmapInfo.IsPrefabLightmap(data.lightmapColor)) continue;
                     EditorGUILayout.ObjectField("      " + data.lightmapColor.name, data.lightmapColor, typeof(Texture2D), false);
                 }
+            }
+            else
+            {
+                EditorGUILayout.HelpBox("No lightmap in this scene", MessageType.Info);
             }
         }
         EditorGUILayout.EndFoldoutHeaderGroup();

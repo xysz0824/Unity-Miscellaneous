@@ -13,7 +13,6 @@ public class PrefabLightmapInfo : MonoBehaviour
     static Dictionary<string, Action> enableTriggers = new Dictionary<string, Action>();
     static Dictionary<string, Action> disableTriggers = new Dictionary<string, Action>();
     static LightmapData[] lightmaps = new LightmapData[0];
-    static LightmapData[] mergedLightmaps = new LightmapData[0];
     static Dictionary<int, int> refs = new Dictionary<int, int>();
 
     public string infoTag = "";
@@ -33,6 +32,11 @@ public class PrefabLightmapInfo : MonoBehaviour
             }
             enableTriggers[infoTag]();
         }
+    }
+
+    public static bool IsPrefabLightmap(Texture2D lightmap)
+    {
+        return Array.Exists(lightmaps, (data) => data.lightmapColor == lightmap);
     }
 
     void Enable()
@@ -65,7 +69,7 @@ public class PrefabLightmapInfo : MonoBehaviour
         List<int> existLightmapIndices = new List<int>();
         if (deleted != null)
         {
-            var lightmapIndex = System.Array.FindIndex(LightmapSettings.lightmaps, (data) =>
+            var lightmapIndex = Array.FindIndex(LightmapSettings.lightmaps, (data) =>
                 data != null && data.lightmapColor == deleted.lightmapColor);
             if (lightmapIndex >= 0)
             {
@@ -74,14 +78,14 @@ public class PrefabLightmapInfo : MonoBehaviour
         }
         for (int i = 0; i < LightmapSettings.lightmaps.Length; ++i)
         {
-            var lightmapIndex = System.Array.FindIndex(lightmaps, (data) =>
+            var lightmapIndex = Array.FindIndex(lightmaps, (data) =>
                 LightmapSettings.lightmaps[i] != null && data.lightmapColor == LightmapSettings.lightmaps[i].lightmapColor);
             if (lightmapIndex >= 0)
             {
                 existLightmapIndices.Add(lightmapIndex);
             }
         }
-        mergedLightmaps = new LightmapData[length + lightmaps.Length - existLightmapIndices.Count];
+        var mergedLightmaps = new LightmapData[length + lightmaps.Length - existLightmapIndices.Count];
         int index = 0;
         for (int i = 0; i < LightmapSettings.lightmaps.Length; ++i)
         {
@@ -115,10 +119,10 @@ public class PrefabLightmapInfo : MonoBehaviour
 #endif
         SceneManager.activeSceneChanged -= OnActiveSceneChanged;
         SceneManager.activeSceneChanged += OnActiveSceneChanged;
-        var lightmapIndex = System.Array.FindIndex(lightmaps, (data) => data.lightmapColor == lightmap);
+        var lightmapIndex = Array.FindIndex(lightmaps, (data) => data.lightmapColor == lightmap);
         if (lightmapIndex < 0)
         {
-            System.Array.Resize(ref lightmaps, lightmaps.Length + 1);
+            Array.Resize(ref lightmaps, lightmaps.Length + 1);
             lightmapIndex = lightmaps.Length - 1;
             lightmaps[lightmapIndex] = new LightmapData();
             lightmaps[lightmapIndex].lightmapColor = lightmap;
@@ -129,7 +133,7 @@ public class PrefabLightmapInfo : MonoBehaviour
         var thisRenderer = GetComponent<Renderer>();
         if (thisRenderer != null)
         {
-            lightmapIndex = System.Array.FindIndex(LightmapSettings.lightmaps, (data) => data.lightmapColor == lightmap);
+            lightmapIndex = Array.FindIndex(LightmapSettings.lightmaps, (data) => data.lightmapColor == lightmap);
             thisRenderer.lightmapIndex = lightmapIndex;
             thisRenderer.lightmapScaleOffset = scaleOffset;
         }
@@ -138,7 +142,7 @@ public class PrefabLightmapInfo : MonoBehaviour
     void OnDisable()
     {
         if (mutingOnEnable) return;
-        var lightmapIndex = System.Array.FindIndex(lightmaps, (data) => data.lightmapColor == lightmap);
+        var lightmapIndex = Array.FindIndex(lightmaps, (data) => data.lightmapColor == lightmap);
         if (lightmapIndex >= 0)
         {
             refs[lightmapIndex]--;
@@ -148,7 +152,7 @@ public class PrefabLightmapInfo : MonoBehaviour
                 var temp = lightmaps[lightmapIndex];
                 lightmaps[lightmapIndex] = lightmaps[lightmaps.Length - 1];
                 lightmaps[lightmaps.Length - 1] = temp;
-                System.Array.Resize(ref lightmaps, lightmaps.Length - 1);
+                Array.Resize(ref lightmaps, lightmaps.Length - 1);
                 MergeToLightmapSettings(temp);
             }
         }
