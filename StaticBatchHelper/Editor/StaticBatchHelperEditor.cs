@@ -90,18 +90,6 @@ public class StaticBatchHelperEditor : Editor
                     infoProperty.FindPropertyRelative("staticBatchInfo.firstSubMesh").intValue = rendererInfo.staticBatchInfo.firstSubMesh;
                     infoProperty.FindPropertyRelative("staticBatchInfo.subMeshCount").intValue = rendererInfo.staticBatchInfo.subMeshCount;
                 }
-                var root = PrefabUtility.GetOutermostPrefabInstanceRoot(gameObject);
-                if (root != null)
-                {
-                    var overrides = PrefabUtility.GetObjectOverrides(root);
-                    for (int i = 0; i < overrides.Count; ++i)
-                    {
-                        if (!(overrides[i].instanceObject is StaticBatchHelper))
-                        {
-                            overrides[i].Revert();
-                        }
-                    }
-                }
                 serializedObject.ApplyModifiedProperties();
                 EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             }
@@ -166,7 +154,7 @@ public class StaticBatchHelperEditor : Editor
             {
                 EditorGUILayout.BeginVertical(new GUIStyle("RL Background"));
                 EditorGUI.BeginDisabledGroup(true);
-                EditorGUILayout.LabelField("Applyed Prefab GUID", helper.appliedPrefabGUID);
+                EditorGUILayout.LabelField("Applied Prefab GUID", helper.appliedPrefabGUID);
                 EditorGUI.EndDisabledGroup();
                 EditorGUILayout.EndVertical();
                 if (GUILayout.Button("Instantiate"))
@@ -202,6 +190,18 @@ public class StaticBatchHelperEditor : Editor
                         {
                             DestroyImmediate(child.gameObject);
                             i--;
+                        }
+                    }
+                }
+                else
+                {
+                    var scene = SceneManager.GetActiveScene();
+                    var rootObjects = scene.GetRootGameObjects();
+                    for (int i = 0; i < rootObjects.Length; ++i)
+                    {
+                        if (PrefabUtility.IsPrefabAssetMissing(rootObjects[i]))
+                        {
+                            DestroyImmediate(rootObjects[i]);
                         }
                     }
                 }
