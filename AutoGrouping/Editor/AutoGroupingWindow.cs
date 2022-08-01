@@ -11,14 +11,15 @@ public class AutoGroupingWindow : EditorWindow
     static GameObject groupRoot;
     static float maxDistance = 2.5f;
     static Color groupColor = Color.white;
-    static int vertexCount = 65535;
+    static int vertexCount = 65536;
     static bool renderableOnly = true;
     static List<Transform> transforms;
-    static List<Vector3?> vector3s;
+    static List<Vector3?> positions;
     static List<Bounds?> bounds;
     static Dictionary<Transform, Transform> originalParents;
     static List<GameObject> groups;
-    static Dictionary<int, Bounds> groupBounds;
+    static Dictionary<int, Bounds> previewBounds;
+    static Dictionary<int, Bounds> resultBounds;
 
     Thread taskThread;
 
@@ -76,14 +77,14 @@ public class AutoGroupingWindow : EditorWindow
         }
         return bounds;
     }
-    static List<Vector3?> GetVector3s(List<Transform> transforms)
+    static List<Vector3?> GetPositions(List<Transform> transforms)
     {
-        var vector3s = new List<Vector3?>();
+        var positions = new List<Vector3?>();
         foreach (var transform in transforms)
         {
-            vector3s.Add(transform == null ? null : new Vector3?(transform.position));
+            positions.Add(transform == null ? null : new Vector3?(transform.position));
         }
-        return vector3s;
+        return positions;
     }
     static int GetGroupRootID(int[] groupIDs, int id)
     {
@@ -97,47 +98,119 @@ public class AutoGroupingWindow : EditorWindow
     static int[] GroupID(List<Vector3?> positions)
     {
         var groupIDs = new int[positions.Count];
-        var indexA = 0;
-        foreach (var a in positions)
+        for (int i = 0; i < positions.Count; ++i)
         {
-            if (a == null)
-            {
-                indexA++;
-                continue;
-            }
-            groupIDs[indexA] = indexA;
-            indexA++;
+            if (positions[i] == null) continue;
+            groupIDs[i] = i;
         }
-        indexA = 0;
-        foreach (var a in positions)
+        for (int i = 0; i < positions.Count; ++i)
         {
-            if (a == null)
+            if (positions[i] == null) continue;
+            for (int k = 0; k < positions.Count; ++k)
             {
-                indexA++;
-                continue;
-            }
-            var indexB = 0;
-            foreach (var b in positions)
-            {
-                if (b == null || a == b)
-                {
-                    indexB++;
-                    continue;
-                }
-                var dist = Vector3.Distance(a.Value, b.Value);
+                if (positions[k] == null || positions[i] == positions[k]) continue;
+                var dist = Vector3.Distance(positions[i].Value, positions[k].Value);
                 if (dist <= maxDistance * 2)
                 {
-                    groupIDs[indexB] = groupIDs[indexA];
+                    groupIDs[k] = groupIDs[i];
                 }
-                indexB++;
             }
-            indexA++;
         }
         for (int i = 0; i < groupIDs.Length; ++i)
         {
             groupIDs[i] = GetGroupRootID(groupIDs, i);
         }
         return groupIDs;
+    }
+    static void SplitGroupByVertexCount(List<Transform> transforms, ref int[] groupIDs, int groupID, ref int maxGroupID)
+    {
+        var sorted = new List<int>();
+        for (int i = 0; i < groupIDs.Length; ++i)
+        {
+            if (groupIDs[i] == groupID)
+            {
+                sorted.Add(i);
+            }
+        }
+        sorted.Sort((a, b) =>
+        {
+            var meshFilterA = transforms[a] == null ? null : transforms[a].GetComponent<MeshFilter>();
+            var meshA = meshFilterA == null ? null : meshFilterA.sharedMesh;
+            var meshFilterB = transforms[b] == null ? null : transforms[b].GetComponent<MeshFilter>();
+            var meshB = meshFilterB == null ? null : meshFilterB.sharedMesh;
+            var valueA = meshA == null ? 0 : meshA.vertexCount;
+            var valueB = meshB == null ? 0 : meshB.vertexCount;
+            return valueB - valueA;
+        }
+        );
+        var newGroupIDs = new List<int>();
+        for (int i = 0; i < sorted.Count; ++i)
+        {
+            if (transforms[sorted[i]] == null || newGroupIDs.Contains(groupIDs[sorted[i]])) continue;
+            newGroupIDs.Add(++maxGroupID);
+            groupIDs[sorted[i]] = newGroupIDs[newGroupIDs.Count - 1];
+            var meshFilter = transforms[sorted[i]].GetComponent<MeshFilter>();
+            var mesh = meshFilter == null ? null : meshFilter.sharedMesh;
+            var vertexCount = mesh == null ? 0 : mesh.vertexCount;
+            while (vertexCount < AutoGroupingWindow.vertexCount)
+            {
+                var nearestDist = float.MaxValue;
+                var nearestID = 0;
+                var nearestVertexCount = 0;
+                for (int k = i + 1; k < sorted.Count; ++k)
+                {
+                    if (transforms[sorted[k]] == null || newGroupIDs.Contains(groupIDs[sorted[k]])) continue;
+                    var dist = Vector3.Distance(transforms[sorted[i]].position, transforms[sorted[k]].position);
+                    if (nearestDist >= dist)
+                    {
+                        meshFilter = transforms[sorted[k]].GetComponent<MeshFilter>();
+                        mesh = meshFilter == null ? null : meshFilter.sharedMesh;
+                        nearestVertexCount = mesh == null ? 0 : mesh.vertexCount;
+                        if (vertexCount + nearestVertexCount > AutoGroupingWindow.vertexCount) continue;
+                        nearestDist = dist;
+                        nearestID = sorted[k];
+                    }
+                }
+                if (nearestDist < float.MaxValue)
+                {
+                    vertexCount += nearestVertexCount;
+                    groupIDs[nearestID] = newGroupIDs[newGroupIDs.Count - 1];
+                }
+                if (nearestDist == float.MaxValue || vertexCount >= AutoGroupingWindow.vertexCount)
+                {
+                    break;
+                }
+            }
+        }
+    }
+    static void SplitGroupByVertexCount(List<Transform> transforms, ref int[] groupIDs)
+    {
+        var groupVertices = new Dictionary<int, int>();
+        var maxGroupID = 0;
+        for (int i = 0; i < transforms.Count; ++i)
+        {
+            var meshFilter = transforms[i] == null ? null : transforms[i].GetComponent<MeshFilter>();
+            var mesh = meshFilter == null ? null : meshFilter.sharedMesh;
+            if (!groupVertices.ContainsKey(groupIDs[i]))
+            {
+                groupVertices[groupIDs[i]] = mesh == null ? 0 : mesh.vertexCount;
+            }
+            else
+            {
+                groupVertices[groupIDs[i]] += mesh == null ? 0 : mesh.vertexCount;
+            }
+            if (groupIDs[i] >= maxGroupID)
+            {
+                maxGroupID = groupIDs[i];
+            }
+        }
+        foreach (var groupVertex in groupVertices)
+        {
+            if (groupVertex.Value > vertexCount)
+            {
+                SplitGroupByVertexCount(transforms, ref groupIDs, groupVertex.Key, ref maxGroupID);
+            }
+        }
     }
     static Dictionary<int, Bounds> CalculateGroupBounds(List<Bounds?> bounds, List<Vector3?> positions, int[] groupIDs)
     {
@@ -167,15 +240,15 @@ public class AutoGroupingWindow : EditorWindow
         }
         taskThread = new Thread(() =>
         {
-            var groupIDs = GroupID(vector3s);
-            groupBounds = CalculateGroupBounds(bounds, vector3s, groupIDs);
+            var groupIDs = GroupID(positions);
+            previewBounds = CalculateGroupBounds(bounds, positions, groupIDs);
         });
         taskThread.Start();
     }
     void Awake()
     {
         transforms = GetTransforms(renderableOnly, groupRoot);
-        vector3s = GetVector3s(transforms);
+        positions = GetPositions(transforms);
         bounds = GetBounds(transforms);
         DoGroupTask();
         SceneView.duringSceneGui += OnSceneGUI;
@@ -188,14 +261,17 @@ public class AutoGroupingWindow : EditorWindow
             taskThread = null;
         }
         SceneView.duringSceneGui -= OnSceneGUI;
+        SceneView.RepaintAll();
     }
     void Group()
     {
         transforms = GetTransforms(renderableOnly, groupRoot);
-        vector3s = GetVector3s(transforms);
+        positions = GetPositions(transforms);
         bounds = GetBounds(transforms);
-        var groupIDs = GroupID(vector3s);
-        groupBounds = CalculateGroupBounds(bounds, vector3s, groupIDs);
+        var groupIDs = GroupID(positions);
+        SplitGroupByVertexCount(transforms, ref groupIDs);
+        previewBounds = null;
+        resultBounds = CalculateGroupBounds(bounds, positions, groupIDs);
         groups = new List<GameObject>();
         var groupDict = new Dictionary<int, GameObject>();
         originalParents = new Dictionary<Transform, Transform>();
@@ -247,10 +323,11 @@ public class AutoGroupingWindow : EditorWindow
         }
         groups = null;
         transforms = GetTransforms(renderableOnly, groupRoot);
-        vector3s = GetVector3s(transforms);
+        positions = GetPositions(transforms);
         bounds = GetBounds(transforms);
-        var groupIDs = GroupID(vector3s);
-        groupBounds = CalculateGroupBounds(bounds, vector3s, groupIDs);
+        var groupIDs = GroupID(positions);
+        resultBounds = null;
+        previewBounds = CalculateGroupBounds(bounds, positions, groupIDs);
     }
     void OnGUI()
     {
@@ -260,7 +337,7 @@ public class AutoGroupingWindow : EditorWindow
         if (groups == null && EditorGUI.EndChangeCheck())
         {
             transforms = GetTransforms(renderableOnly, groupRoot);
-            vector3s = GetVector3s(transforms);
+            positions = GetPositions(transforms);
             bounds = GetBounds(transforms);
             DoGroupTask();
             SceneView.RepaintAll();
@@ -273,7 +350,7 @@ public class AutoGroupingWindow : EditorWindow
             DoGroupTask();
             SceneView.RepaintAll();
         }
-        vertexCount = Mathf.Max(0, EditorGUILayout.IntField("Vertex Count", vertexCount));
+        vertexCount = Mathf.Max(256, EditorGUILayout.IntField("Vertex Count", vertexCount));
         EditorGUI.BeginDisabledGroup(transforms == null || transforms.Count == 0);
         if (groups == null && GUILayout.Button("Group"))
         {
@@ -287,9 +364,17 @@ public class AutoGroupingWindow : EditorWindow
     }
     void OnSceneGUI(SceneView sceneView)
     {
-        if (groupBounds != null)
+        if (previewBounds != null)
         {
-            foreach (var groupBound in groupBounds.Values)
+            foreach (var groupBound in previewBounds.Values)
+            {
+                Handles.color = groupColor;
+                Handles.DrawWireCube(groupBound.center, groupBound.size);
+            }
+        }
+        else if (resultBounds != null)
+        {
+            foreach (var groupBound in resultBounds.Values)
             {
                 Handles.color = groupColor;
                 Handles.DrawWireCube(groupBound.center, groupBound.size);
