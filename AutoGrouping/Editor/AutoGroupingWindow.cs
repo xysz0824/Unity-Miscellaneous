@@ -13,13 +13,11 @@ public class AutoGroupingWindow : EditorWindow
     static Color groupColor = Color.white;
     static int vertexCount = 65536;
     static bool renderableOnly = true;
-    static List<Transform> transforms;
-    static List<Vector3?> positions;
-    static List<Bounds?> bounds;
-    static Dictionary<Transform, Transform> originalParents;
-    static List<GameObject> groups;
-    static Dictionary<int, Bounds> previewBounds;
-    static Dictionary<int, Bounds> resultBounds;
+
+    List<Transform> transforms;
+    List<Vector3?> positions;
+    List<Bounds?> bounds;
+    Dictionary<int, Bounds> groupBounds;
 
     Thread taskThread;
 
@@ -39,17 +37,21 @@ public class AutoGroupingWindow : EditorWindow
             Undo.DestroyObjectImmediate(gameObject);
         }
     }
-    [MenuItem("GameObject/AutoGrouping", false)]
+    [MenuItem("GameObject/Auto Grouping", false)]
     static void Open()
     {
         groupRoot = Selection.activeGameObject;
-        GetWindow<AutoGroupingWindow>("AutoGrouping").Show();
+        var window = GetWindow<AutoGroupingWindow>("AutoGrouping");
+        window.transforms = GetTransforms(renderableOnly, groupRoot);
+        window.positions = GetPositions(window.transforms);
+        window.bounds = GetBounds(window.transforms);
+        window.DoGroupTask();
+        window.Show();
     }
     static bool CheckRenderable(Renderer renderer)
     {
         if (renderer == null || renderer.sharedMaterial == null) return false;
-        var size = renderer.bounds.size.x * renderer.bounds.size.y * renderer.bounds.size.z;
-        if (size == 0) return false;
+        if (renderer.bounds.size.x == 0 && renderer.bounds.size.y == 0 && renderer.bounds.size.z == 0) return false;
         return true;
     }
     static void GetTransforms(bool renderableOnly, GameObject root, ref List<Transform> transforms)
@@ -231,6 +233,36 @@ public class AutoGroupingWindow : EditorWindow
         }
         return groupBounds;
     }
+    static void SortGroup(Dictionary<int, Bounds> bounds, ref int[] groupIDs)
+    {
+        var sortedGroupIDs = new List<int>(bounds.Keys);
+        var enumerator = bounds.GetEnumerator();
+        enumerator.MoveNext();
+        var entireBounds = enumerator.Current.Value;
+        while (enumerator.MoveNext())
+        {
+            entireBounds.Encapsulate(enumerator.Current.Value);
+        }
+        sortedGroupIDs.Sort((a, b) =>
+        {
+            var size = new Vector3(1, entireBounds.size.y, entireBounds.size.z);
+            var valueA = Vector3.Dot(bounds[a].min - entireBounds.min, size);
+            var valueB = Vector3.Dot(bounds[b].min - entireBounds.min, size);
+            return (int)(valueA - valueB);
+        });
+        var changedGroupIds = new List<int>(groupIDs.Length);
+        for (int i = 0; i < sortedGroupIDs.Count; ++i)
+        {
+            for (int k = 0; k < groupIDs.Length; ++k)
+            {
+                if (!changedGroupIds.Contains(k) && groupIDs[k] == sortedGroupIDs[i])
+                {
+                    groupIDs[k] = i;
+                    changedGroupIds.Add(k);
+                }
+            }
+        }
+    }
     void DoGroupTask()
     {
         if (taskThread != null && taskThread.IsAlive)
@@ -241,16 +273,12 @@ public class AutoGroupingWindow : EditorWindow
         taskThread = new Thread(() =>
         {
             var groupIDs = GroupID(positions);
-            previewBounds = CalculateGroupBounds(bounds, positions, groupIDs);
+            groupBounds = CalculateGroupBounds(bounds, positions, groupIDs);
         });
         taskThread.Start();
     }
     void Awake()
     {
-        transforms = GetTransforms(renderableOnly, groupRoot);
-        positions = GetPositions(transforms);
-        bounds = GetBounds(transforms);
-        DoGroupTask();
         SceneView.duringSceneGui += OnSceneGUI;
     }
     void OnDestroy()
@@ -265,76 +293,50 @@ public class AutoGroupingWindow : EditorWindow
     }
     void Group()
     {
+        var autoGrouping = groupRoot.GetComponent<AutoGrouping>();
+        if (!autoGrouping) autoGrouping = groupRoot.AddComponent<AutoGrouping>();
+        else autoGrouping.Recover();
         transforms = GetTransforms(renderableOnly, groupRoot);
         positions = GetPositions(transforms);
         bounds = GetBounds(transforms);
         var groupIDs = GroupID(positions);
         SplitGroupByVertexCount(transforms, ref groupIDs);
-        previewBounds = null;
-        resultBounds = CalculateGroupBounds(bounds, positions, groupIDs);
-        groups = new List<GameObject>();
-        var groupDict = new Dictionary<int, GameObject>();
-        originalParents = new Dictionary<Transform, Transform>();
+        groupBounds = CalculateGroupBounds(bounds, positions, groupIDs);
+        SortGroup(groupBounds, ref groupIDs);
+        var groupDict = new Dictionary<int, AutoGrouping.Group>();
+        var groups = new List<AutoGrouping.Group>();
+        var originalHierarchies = new List<AutoGrouping.OriginalHierarchy>();
         for (int i = 0; i < transforms.Count; ++i)
         {
             if (!groupDict.ContainsKey(groupIDs[i]))
             {
-                var group = new GameObject("Group_" + groupDict.Count);
-                group.transform.SetParent(groupRoot == null ? null : groupRoot.transform, false);
+                var group = new AutoGrouping.Group();
+                group.id = groupIDs[i];
+                group.name = "Group_" + group.id;
+                group.children = new List<Transform>();
                 groupDict[groupIDs[i]] = group;
                 groups.Add(group);
             }
-            if (PrefabUtility.IsPartOfAnyPrefab(transforms[i]) && !PrefabUtility.IsAddedGameObjectOverride(transforms[i].gameObject))
+            groupDict[groupIDs[i]].children.Add(transforms[i]);
+            if (!AutoGrouping.CheckIfHierarchyImmutable(transforms[i].gameObject))
             {
-                var copy = Instantiate(transforms[i]);
-                var instanceRoot = PrefabUtility.GetNearestPrefabInstanceRoot(transforms[i]);
-                var prefabRoot = groupDict[groupIDs[i]].transform.Find(instanceRoot.name);
-                if (!prefabRoot)
-                {
-                    prefabRoot = new GameObject(instanceRoot.name).transform;
-                    prefabRoot.SetParent(groupDict[groupIDs[i]].transform, false);
-                }
-                copy.name = transforms[i].name;
-                copy.transform.SetParent(prefabRoot, true);
-                copy.transform.position = transforms[i].transform.position;
-                copy.transform.rotation = transforms[i].transform.rotation;
-            }
-            else
-            {
-                originalParents[transforms[i]] = transforms[i].parent;
-                transforms[i].SetParent(groupDict[groupIDs[i]].transform, true);
+                var originalHierarchy = new AutoGrouping.OriginalHierarchy();
+                originalHierarchy.transform = transforms[i];
+                originalHierarchy.originalParent = transforms[i].parent;
+                originalHierarchies.Add(originalHierarchy);
             }
         }
-    }
-    void Recover()
-    {
-        if (originalParents != null)
-        {
-            foreach (var originalParent in originalParents)
-            {
-                if (originalParent.Key == null) continue;
-                originalParent.Key.SetParent(originalParent.Value);
-            }
-            originalParents = null;
-        }
-        foreach (var group in groups)
-        {
-            DestroyImmediate(group);
-        }
-        groups = null;
-        transforms = GetTransforms(renderableOnly, groupRoot);
-        positions = GetPositions(transforms);
-        bounds = GetBounds(transforms);
-        var groupIDs = GroupID(positions);
-        resultBounds = null;
-        previewBounds = CalculateGroupBounds(bounds, positions, groupIDs);
+        groups.Sort((a, b) => a.id - b.id);
+        autoGrouping.groups = groups;
+        autoGrouping.originalHierarchies = originalHierarchies;
+        autoGrouping.RebuildGroup();
     }
     void OnGUI()
     {
         EditorGUI.BeginChangeCheck();
         groupRoot = (GameObject)EditorGUILayout.ObjectField("Group Root", groupRoot, typeof(GameObject), true);
         renderableOnly = EditorGUILayout.Toggle("Renderable Only", renderableOnly);
-        if (groups == null && EditorGUI.EndChangeCheck())
+        if (EditorGUI.EndChangeCheck())
         {
             transforms = GetTransforms(renderableOnly, groupRoot);
             positions = GetPositions(transforms);
@@ -345,39 +347,59 @@ public class AutoGroupingWindow : EditorWindow
         EditorGUI.BeginChangeCheck();
         maxDistance = Mathf.Max(0, EditorGUILayout.FloatField("Max Distance", maxDistance));
         groupColor = EditorGUILayout.ColorField("Group Color", groupColor);
-        if (groups == null && EditorGUI.EndChangeCheck())
+        if (EditorGUI.EndChangeCheck())
         {
             DoGroupTask();
             SceneView.RepaintAll();
         }
         vertexCount = Mathf.Max(256, EditorGUILayout.IntField("Vertex Count", vertexCount));
         EditorGUI.BeginDisabledGroup(transforms == null || transforms.Count == 0);
-        if (groups == null && GUILayout.Button("Group"))
+        if (GUILayout.Button("Group"))
         {
             Group();
         }
         EditorGUI.EndDisabledGroup();
-        if (groups != null && GUILayout.Button("Recover"))
-        {
-            Recover();
-        }
     }
+    static Vector3[] rectVertices = new Vector3[4];
     void OnSceneGUI(SceneView sceneView)
     {
-        if (previewBounds != null)
+        if (groupBounds != null)
         {
-            foreach (var groupBound in previewBounds.Values)
+            foreach (var groupBound in groupBounds.Values)
             {
-                Handles.color = groupColor;
-                Handles.DrawWireCube(groupBound.center, groupBound.size);
-            }
-        }
-        else if (resultBounds != null)
-        {
-            foreach (var groupBound in resultBounds.Values)
-            {
-                Handles.color = groupColor;
-                Handles.DrawWireCube(groupBound.center, groupBound.size);
+                var faceColor = groupColor * 0.35f;
+                var outlineColor = groupColor;
+                Handles.zTest = UnityEngine.Rendering.CompareFunction.LessEqual;
+                rectVertices[0] = new Vector3(groupBound.min.x, groupBound.min.y, groupBound.min.z);
+                rectVertices[1] = new Vector3(groupBound.min.x, groupBound.min.y, groupBound.max.z);
+                rectVertices[2] = new Vector3(groupBound.max.x, groupBound.min.y, groupBound.max.z);
+                rectVertices[3] = new Vector3(groupBound.max.x, groupBound.min.y, groupBound.min.z);
+                Handles.DrawSolidRectangleWithOutline(rectVertices, faceColor, outlineColor);
+                rectVertices[0] = new Vector3(groupBound.min.x, groupBound.max.y, groupBound.min.z);
+                rectVertices[1] = new Vector3(groupBound.min.x, groupBound.max.y, groupBound.max.z);
+                rectVertices[2] = new Vector3(groupBound.max.x, groupBound.max.y, groupBound.max.z);
+                rectVertices[3] = new Vector3(groupBound.max.x, groupBound.max.y, groupBound.min.z);
+                Handles.DrawSolidRectangleWithOutline(rectVertices, faceColor, outlineColor);
+                rectVertices[0] = new Vector3(groupBound.min.x, groupBound.min.y, groupBound.min.z);
+                rectVertices[1] = new Vector3(groupBound.min.x, groupBound.min.y, groupBound.max.z);
+                rectVertices[2] = new Vector3(groupBound.min.x, groupBound.max.y, groupBound.max.z);
+                rectVertices[3] = new Vector3(groupBound.min.x, groupBound.max.y, groupBound.min.z);
+                Handles.DrawSolidRectangleWithOutline(rectVertices, faceColor, outlineColor);
+                rectVertices[0] = new Vector3(groupBound.max.x, groupBound.min.y, groupBound.min.z);
+                rectVertices[1] = new Vector3(groupBound.max.x, groupBound.min.y, groupBound.max.z);
+                rectVertices[2] = new Vector3(groupBound.max.x, groupBound.max.y, groupBound.max.z);
+                rectVertices[3] = new Vector3(groupBound.max.x, groupBound.max.y, groupBound.min.z);
+                Handles.DrawSolidRectangleWithOutline(rectVertices, faceColor, outlineColor);
+                rectVertices[0] = new Vector3(groupBound.min.x, groupBound.min.y, groupBound.min.z);
+                rectVertices[1] = new Vector3(groupBound.min.x, groupBound.max.y, groupBound.min.z);
+                rectVertices[2] = new Vector3(groupBound.max.x, groupBound.max.y, groupBound.min.z);
+                rectVertices[3] = new Vector3(groupBound.max.x, groupBound.min.y, groupBound.min.z);
+                Handles.DrawSolidRectangleWithOutline(rectVertices, faceColor, outlineColor);
+                rectVertices[0] = new Vector3(groupBound.min.x, groupBound.min.y, groupBound.max.z);
+                rectVertices[1] = new Vector3(groupBound.min.x, groupBound.max.y, groupBound.max.z);
+                rectVertices[2] = new Vector3(groupBound.max.x, groupBound.max.y, groupBound.max.z);
+                rectVertices[3] = new Vector3(groupBound.max.x, groupBound.min.y, groupBound.max.z);
+                Handles.DrawSolidRectangleWithOutline(rectVertices, faceColor, outlineColor);
             }
         }
     }
