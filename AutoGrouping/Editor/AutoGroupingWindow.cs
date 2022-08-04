@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -8,18 +9,29 @@ using UnityEngine;
 
 public class AutoGroupingWindow : EditorWindow
 {
+    public enum Strategy
+    {
+        ByPosition,
+        ByPrefix
+    }
+    static Strategy strategy;
     static GameObject groupRoot;
+    static bool renderableOnly = true;
     static float maxDistance = 2.5f;
     static Color groupColor = Color.white;
     static int vertexCount = 65536;
-    static bool renderableOnly = true;
+    static float similarity = 0.6f;
 
     List<Transform> transforms;
     List<Vector3?> positions;
     List<Bounds?> bounds;
+    List<string> names;
     Dictionary<int, Bounds> groupBounds;
+    Dictionary<int, string> groupNames;
 
     Thread taskThread;
+    bool needRepaint;
+    Vector2 scrollPos;
 
     [MenuItem("GameObject/Delete Parent", false, 0)]
     static void DeleteParent()
@@ -45,6 +57,7 @@ public class AutoGroupingWindow : EditorWindow
         window.transforms = GetTransforms(renderableOnly, groupRoot);
         window.positions = GetPositions(window.transforms);
         window.bounds = GetBounds(window.transforms);
+        window.names = GetNames(window.transforms);
         window.DoGroupTask();
         window.Show();
     }
@@ -88,6 +101,15 @@ public class AutoGroupingWindow : EditorWindow
         }
         return positions;
     }
+    static List<string> GetNames(List<Transform> transforms)
+    {
+        var names = new List<string>();
+        foreach (var transform in transforms)
+        {
+            names.Add(transform == null ? null : transform.name.Trim().ToLowerInvariant());
+        }
+        return names;
+    }
     static int GetGroupRootID(int[] groupIDs, int id)
     {
         id = groupIDs[id];
@@ -97,7 +119,7 @@ public class AutoGroupingWindow : EditorWindow
         }
         return id;
     }
-    static int[] GroupID(List<Vector3?> positions)
+    static int[] GroupIDByPosition(List<Vector3?> positions)
     {
         var groupIDs = new int[positions.Count];
         for (int i = 0; i < positions.Count; ++i)
@@ -112,7 +134,7 @@ public class AutoGroupingWindow : EditorWindow
             {
                 if (positions[k] == null || positions[i] == positions[k]) continue;
                 var dist = Vector3.Distance(positions[i].Value, positions[k].Value);
-                if (dist <= maxDistance * 2)
+                if (dist <= maxDistance * 2 && groupIDs[groupIDs[i]] != k)
                 {
                     groupIDs[k] = groupIDs[i];
                 }
@@ -233,7 +255,7 @@ public class AutoGroupingWindow : EditorWindow
         }
         return groupBounds;
     }
-    static void SortGroup(Dictionary<int, Bounds> bounds, ref int[] groupIDs)
+    static void SortGroupByPosition(Dictionary<int, Bounds> bounds, ref int[] groupIDs)
     {
         var sortedGroupIDs = new List<int>(bounds.Keys);
         var enumerator = bounds.GetEnumerator();
@@ -263,6 +285,73 @@ public class AutoGroupingWindow : EditorWindow
             }
         }
     }
+    static int MaxMatchingPrefixLength(string a, string b)
+    {
+        int minLength = Mathf.Min(a.Length, b.Length);
+        int count;
+        for (count = 0; count < minLength; ++count)
+        {
+            if (a[count] != b[count]) break;
+        }
+        return count;
+    }
+    static string MaxMatchingPrefix(string a, string b)
+    {
+        int minLength = Mathf.Min(a.Length, b.Length);
+        var stringBuilder = new StringBuilder(minLength);
+        for (int i = 0; i < minLength; ++i)
+        {
+            if (a[i] != b[i]) break;
+            stringBuilder.Append(a[i]);
+        }
+        return stringBuilder.ToString();
+    }
+    static int[] GroupIDByName(List<string> names)
+    {
+        var groupIDs = new int[names.Count];
+        for (int i = 0; i < names.Count; ++i)
+        {
+            if (names[i] == null) continue;
+            groupIDs[i] = i;
+        }
+        for (int i = 0; i < names.Count; ++i)
+        {
+            if (names[i] == null) continue;
+            for (int k = 0; k < names.Count; ++k)
+            {
+                if (names[k] == null || names[i] == names[k]) continue;
+                var prefix = MaxMatchingPrefixLength(names[i], names[k]);
+                var testSimilarity = (float)prefix / Mathf.Min(names[i].Length, names[k].Length);
+                if (testSimilarity >= similarity)
+                {
+                    groupIDs[k] = groupIDs[i];
+                }
+            }
+        }
+        for (int i = 0; i < groupIDs.Length; ++i)
+        {
+            groupIDs[i] = GetGroupRootID(groupIDs, i);
+        }
+        return groupIDs;
+    }
+    static Dictionary<int, string> GenerateGroupNames(List<string> names, int[] groupIDs)
+    {
+        var groupNames = new Dictionary<int, string>();
+        for (int i = 0; i < names.Count; ++i)
+        {
+            if (names[i] == null) continue;
+            if (!groupNames.ContainsKey(groupIDs[i]))
+            {
+                groupNames[groupIDs[i]] = names[i];
+            }
+            else
+            {
+                var prefix = MaxMatchingPrefix(groupNames[groupIDs[i]], names[i]);
+                if (prefix.Length <= groupNames[groupIDs[i]].Length) groupNames[groupIDs[i]] = prefix;
+            }
+        }
+        return groupNames;
+    }
     void DoGroupTask()
     {
         if (taskThread != null && taskThread.IsAlive)
@@ -272,10 +361,29 @@ public class AutoGroupingWindow : EditorWindow
         }
         taskThread = new Thread(() =>
         {
-            var groupIDs = GroupID(positions);
-            groupBounds = CalculateGroupBounds(bounds, positions, groupIDs);
+            switch (strategy)
+            {
+                case Strategy.ByPosition:
+                    var groupIDs = GroupIDByPosition(positions);
+                    groupBounds = CalculateGroupBounds(bounds, positions, groupIDs);
+                    break;
+                case Strategy.ByPrefix:
+                    groupIDs = GroupIDByName(names);
+                    groupNames = GenerateGroupNames(names, groupIDs);
+                    break;
+            }
+            needRepaint = true;
         });
         taskThread.Start();
+    }
+    void Update()
+    {
+        if (needRepaint)
+        {
+            SceneView.RepaintAll();
+            Repaint();
+            needRepaint = false;
+        }
     }
     void Awake()
     {
@@ -299,10 +407,21 @@ public class AutoGroupingWindow : EditorWindow
         transforms = GetTransforms(renderableOnly, groupRoot);
         positions = GetPositions(transforms);
         bounds = GetBounds(transforms);
-        var groupIDs = GroupID(positions);
-        SplitGroupByVertexCount(transforms, ref groupIDs);
-        groupBounds = CalculateGroupBounds(bounds, positions, groupIDs);
-        SortGroup(groupBounds, ref groupIDs);
+        names = GetNames(transforms);
+        int[] groupIDs = null;
+        switch (strategy)
+        {
+            case Strategy.ByPosition:
+                groupIDs = GroupIDByPosition(positions);
+                SplitGroupByVertexCount(transforms, ref groupIDs);
+                groupBounds = CalculateGroupBounds(bounds, positions, groupIDs);
+                SortGroupByPosition(groupBounds, ref groupIDs);
+                break;
+            case Strategy.ByPrefix:
+                groupIDs = GroupIDByName(names);
+                groupNames = GenerateGroupNames(names, groupIDs);
+                break;
+        }
         var groupDict = new Dictionary<int, AutoGrouping.Group>();
         var groups = new List<AutoGrouping.Group>();
         var originalHierarchies = new List<AutoGrouping.OriginalHierarchy>();
@@ -312,13 +431,21 @@ public class AutoGroupingWindow : EditorWindow
             {
                 var group = new AutoGrouping.Group();
                 group.id = groupIDs[i];
-                group.name = "Group_" + group.id;
+                switch (strategy)
+                {
+                    case Strategy.ByPosition:
+                        group.name = "Group_" + group.id;
+                        break;
+                    case Strategy.ByPrefix:
+                        group.name = groupNames[group.id];
+                        break;
+                }
                 group.children = new List<Transform>();
                 groupDict[groupIDs[i]] = group;
                 groups.Add(group);
             }
             groupDict[groupIDs[i]].children.Add(transforms[i]);
-            if (!AutoGrouping.CheckIfHierarchyImmutable(transforms[i].gameObject))
+            if (!AutoGrouping.IsHierarchyImmutable(transforms[i].gameObject))
             {
                 var originalHierarchy = new AutoGrouping.OriginalHierarchy();
                 originalHierarchy.transform = transforms[i];
@@ -326,44 +453,78 @@ public class AutoGroupingWindow : EditorWindow
                 originalHierarchies.Add(originalHierarchy);
             }
         }
+        for (int i = 0; i < groups.Count; ++i)
+        {
+            if (groups[i].children.Count <= 1)
+            {
+                groups.RemoveAt(i);
+                i--;
+            }
+        }
         groups.Sort((a, b) => a.id - b.id);
+        for (int i = 0; i < groups.Count; ++i)
+        {
+            groups[i].id = i;
+        }
         autoGrouping.groups = groups;
         autoGrouping.originalHierarchies = originalHierarchies;
         autoGrouping.RebuildGroup();
+        SceneView.RepaintAll();
     }
     void OnGUI()
     {
+        scrollPos = EditorGUILayout.BeginScrollView(scrollPos, false, false);
         EditorGUI.BeginChangeCheck();
         groupRoot = (GameObject)EditorGUILayout.ObjectField("Group Root", groupRoot, typeof(GameObject), true);
         renderableOnly = EditorGUILayout.Toggle("Renderable Only", renderableOnly);
+        strategy = (Strategy)EditorGUILayout.EnumPopup("Strategy", strategy);
         if (EditorGUI.EndChangeCheck())
         {
             transforms = GetTransforms(renderableOnly, groupRoot);
             positions = GetPositions(transforms);
             bounds = GetBounds(transforms);
+            names = GetNames(transforms);
             DoGroupTask();
-            SceneView.RepaintAll();
         }
+        EditorGUI.indentLevel++;
         EditorGUI.BeginChangeCheck();
-        maxDistance = Mathf.Max(0, EditorGUILayout.FloatField("Max Distance", maxDistance));
-        groupColor = EditorGUILayout.ColorField("Group Color", groupColor);
+        switch (strategy)
+        {
+            case Strategy.ByPosition:
+                maxDistance = Mathf.Max(0, EditorGUILayout.FloatField("- Max Distance", maxDistance));
+                groupColor = EditorGUILayout.ColorField("- Group Color", groupColor);
+                vertexCount = Mathf.Max(256, EditorGUILayout.IntField("- Vertex Count", vertexCount));
+                break;
+            case Strategy.ByPrefix:
+                similarity = Mathf.Clamp(EditorGUILayout.FloatField("- Similarity", similarity), 0f, 1);
+                break;
+        }
         if (EditorGUI.EndChangeCheck())
         {
             DoGroupTask();
-            SceneView.RepaintAll();
         }
-        vertexCount = Mathf.Max(256, EditorGUILayout.IntField("Vertex Count", vertexCount));
+        EditorGUI.indentLevel--;
         EditorGUI.BeginDisabledGroup(transforms == null || transforms.Count == 0);
         if (GUILayout.Button("Group"))
         {
             Group();
         }
         EditorGUI.EndDisabledGroup();
+        if (strategy == Strategy.ByPrefix && groupNames != null)
+        {
+            string groupNameList = "\n";
+            foreach (var groupName in groupNames.Values)
+            {
+                groupNameList += groupName + "\n";
+            }
+            EditorGUILayout.HelpBox("Named Groups : " + groupNameList, MessageType.Info);
+        }
+        EditorGUILayout.EndScrollView();
     }
     static Vector3[] rectVertices = new Vector3[4];
     void OnSceneGUI(SceneView sceneView)
     {
-        if (groupBounds != null)
+        if (strategy == Strategy.ByPosition && groupBounds != null)
         {
             foreach (var groupBound in groupBounds.Values)
             {

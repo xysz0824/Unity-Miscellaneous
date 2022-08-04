@@ -27,13 +27,8 @@ public class AutoGrouping : MonoBehaviour
     }
     public List<OriginalHierarchy> originalHierarchies = new List<OriginalHierarchy>();
 #if UNITY_EDITOR
-    public static bool CheckIfHierarchyImmutable(GameObject gameObject)
-    {
-        return PrefabUtility.IsPartOfAnyPrefab(gameObject) &&
-                PrefabUtility.GetNearestPrefabInstanceRoot(gameObject) &&
-                !PrefabUtility.IsAddedGameObjectOverride(gameObject) &&
-                !PrefabUtility.IsOutermostPrefabInstanceRoot(gameObject);
-    }
+    public static bool IsHierarchyImmutable(GameObject gameObject) => PrefabUtility.IsPartOfAnyPrefab(gameObject) && PrefabUtility.GetNearestPrefabInstanceRoot(gameObject) &&
+       !PrefabUtility.IsAddedGameObjectOverride(gameObject) && !PrefabUtility.IsOutermostPrefabInstanceRoot(gameObject);
     public void Recover()
     {
         for (int i = 0; i < transform.childCount; ++i)
@@ -79,7 +74,7 @@ public class AutoGrouping : MonoBehaviour
             group.addedInstances = new List<GameObject>();
             foreach (var child in group.children)
             {
-                if (CheckIfHierarchyImmutable(child.gameObject))
+                if (IsHierarchyImmutable(child.gameObject))
                 {
                     var instance = Instantiate(child.gameObject);
                     var instanceRoot = PrefabUtility.GetNearestPrefabInstanceRoot(child);

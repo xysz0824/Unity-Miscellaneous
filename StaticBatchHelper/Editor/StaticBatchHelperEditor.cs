@@ -146,7 +146,9 @@ public class StaticBatchHelperEditor : Editor
                 helper.appliedPrefabGUID = AssetDatabase.AssetPathToGUID(path);
                 serializedObject.ApplyModifiedProperties();
                 var instance = PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(path)) as GameObject;
+                var siblingIndex = helper.gameObject.transform.GetSiblingIndex();
                 instance.transform.SetParent(helper.gameObject.transform.parent, false);
+                instance.transform.SetSiblingIndex(siblingIndex);
                 helper.gameObject.SetActive(false);
                 Selection.activeGameObject = instance;
             }
@@ -164,6 +166,8 @@ public class StaticBatchHelperEditor : Editor
                     {
                         var instance = PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(path)) as GameObject;
                         instance.transform.SetParent(helper.gameObject.transform.parent, false);
+                        var siblingIndex = helper.gameObject.transform.GetSiblingIndex();
+                        instance.transform.SetSiblingIndex(siblingIndex);
                         helper.gameObject.SetActive(false);
                     }
                 }
