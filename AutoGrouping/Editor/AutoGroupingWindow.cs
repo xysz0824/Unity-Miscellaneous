@@ -19,7 +19,8 @@ public class AutoGroupingWindow : EditorWindow
     static bool renderableOnly = true;
     static float maxDistance = 2.5f;
     static Color groupColor = Color.white;
-    static int vertexCount = 65536;
+    static int vertexCount = 65535;
+    static string groupPrefix = "Group_";
     static float similarity = 0.6f;
 
     List<Transform> transforms;
@@ -80,6 +81,8 @@ public class AutoGroupingWindow : EditorWindow
     {
         var transforms = new List<Transform>();
         if (root != null) GetTransforms(renderableOnly, root, ref transforms);
+        //Sort transforms for stable grouping
+        transforms.Sort((a, b) => a.GetInstanceID() - b.GetInstanceID());
         return transforms;
     }
     static List<Bounds?> GetBounds(List<Transform> transforms)
@@ -134,7 +137,7 @@ public class AutoGroupingWindow : EditorWindow
             {
                 if (positions[k] == null || positions[i] == positions[k]) continue;
                 var dist = Vector3.Distance(positions[i].Value, positions[k].Value);
-                if (dist <= maxDistance * 2 && groupIDs[groupIDs[i]] != k)
+                if (dist <= maxDistance * 2 && groupIDs[groupIDs[i]] != k) //Avoid index cycles
                 {
                     groupIDs[k] = groupIDs[i];
                 }
@@ -146,7 +149,7 @@ public class AutoGroupingWindow : EditorWindow
         }
         return groupIDs;
     }
-    static void SplitGroupByVertexCount(List<Transform> transforms, ref int[] groupIDs, int groupID, ref int maxGroupID)
+    static void SplitGroupByVertexCount(List<Transform> transforms, ref int[] groupIDs, int groupID)
     {
         var sorted = new List<int>();
         for (int i = 0; i < groupIDs.Length; ++i)
@@ -165,13 +168,12 @@ public class AutoGroupingWindow : EditorWindow
             var valueA = meshA == null ? 0 : meshA.vertexCount;
             var valueB = meshB == null ? 0 : meshB.vertexCount;
             return valueB - valueA;
-        }
-        );
+        });
         var newGroupIDs = new List<int>();
         for (int i = 0; i < sorted.Count; ++i)
         {
             if (transforms[sorted[i]] == null || newGroupIDs.Contains(groupIDs[sorted[i]])) continue;
-            newGroupIDs.Add(++maxGroupID);
+            newGroupIDs.Add(++groupID);
             groupIDs[sorted[i]] = newGroupIDs[newGroupIDs.Count - 1];
             var meshFilter = transforms[sorted[i]].GetComponent<MeshFilter>();
             var mesh = meshFilter == null ? null : meshFilter.sharedMesh;
@@ -209,8 +211,11 @@ public class AutoGroupingWindow : EditorWindow
     }
     static void SplitGroupByVertexCount(List<Transform> transforms, ref int[] groupIDs)
     {
+        for (int i = 0; i < groupIDs.Length; ++i)
+        {
+            groupIDs[i] *= transforms.Count;
+        }
         var groupVertices = new Dictionary<int, int>();
-        var maxGroupID = 0;
         for (int i = 0; i < transforms.Count; ++i)
         {
             var meshFilter = transforms[i] == null ? null : transforms[i].GetComponent<MeshFilter>();
@@ -223,16 +228,12 @@ public class AutoGroupingWindow : EditorWindow
             {
                 groupVertices[groupIDs[i]] += mesh == null ? 0 : mesh.vertexCount;
             }
-            if (groupIDs[i] >= maxGroupID)
-            {
-                maxGroupID = groupIDs[i];
-            }
         }
         foreach (var groupVertex in groupVertices)
         {
             if (groupVertex.Value > vertexCount)
             {
-                SplitGroupByVertexCount(transforms, ref groupIDs, groupVertex.Key, ref maxGroupID);
+                SplitGroupByVertexCount(transforms, ref groupIDs, groupVertex.Key);
             }
         }
     }
@@ -255,7 +256,7 @@ public class AutoGroupingWindow : EditorWindow
         }
         return groupBounds;
     }
-    static void SortGroupByPosition(Dictionary<int, Bounds> bounds, ref int[] groupIDs)
+    static void SortGroupByPosition(List<Transform> transforms, Dictionary<int, Bounds> bounds, ref int[] groupIDs)
     {
         var sortedGroupIDs = new List<int>(bounds.Keys);
         var enumerator = bounds.GetEnumerator();
@@ -265,11 +266,16 @@ public class AutoGroupingWindow : EditorWindow
         {
             entireBounds.Encapsulate(enumerator.Current.Value);
         }
+        var factor = entireBounds.size;
+        if (factor.x >= factor.y && factor.x >= factor.z) factor = new Vector3(100, 0, 0);
+        else if (factor.y >= factor.x && factor.y >= factor.z) factor = new Vector3(0, 100, 0);
+        else factor = new Vector3(0, 0, 100);
         sortedGroupIDs.Sort((a, b) =>
         {
-            var size = new Vector3(1, entireBounds.size.y, entireBounds.size.z);
-            var valueA = Vector3.Dot(bounds[a].min - entireBounds.min, size);
-            var valueB = Vector3.Dot(bounds[b].min - entireBounds.min, size);
+            var aGroupID = a % transforms.Count == 0 ? a : ((a / transforms.Count) * transforms.Count + 1);
+            var valueA = Vector3.Dot(bounds[aGroupID].center, factor);
+            var bGroupID = b % transforms.Count == 0 ? b : ((b / transforms.Count) * transforms.Count + 1);
+            var valueB = Vector3.Dot(bounds[bGroupID].center, factor);
             return (int)(valueA - valueB);
         });
         var changedGroupIds = new List<int>(groupIDs.Length);
@@ -415,7 +421,7 @@ public class AutoGroupingWindow : EditorWindow
                 groupIDs = GroupIDByPosition(positions);
                 SplitGroupByVertexCount(transforms, ref groupIDs);
                 groupBounds = CalculateGroupBounds(bounds, positions, groupIDs);
-                SortGroupByPosition(groupBounds, ref groupIDs);
+                SortGroupByPosition(transforms, groupBounds, ref groupIDs);
                 break;
             case Strategy.ByPrefix:
                 groupIDs = GroupIDByName(names);
@@ -434,7 +440,7 @@ public class AutoGroupingWindow : EditorWindow
                 switch (strategy)
                 {
                     case Strategy.ByPosition:
-                        group.name = "Group_" + group.id;
+                        group.name = groupPrefix + group.id;
                         break;
                     case Strategy.ByPrefix:
                         group.name = groupNames[group.id];
@@ -494,6 +500,7 @@ public class AutoGroupingWindow : EditorWindow
                 maxDistance = Mathf.Max(0, EditorGUILayout.FloatField("- Max Distance", maxDistance));
                 groupColor = EditorGUILayout.ColorField("- Group Color", groupColor);
                 vertexCount = Mathf.Max(256, EditorGUILayout.IntField("- Vertex Count", vertexCount));
+                groupPrefix = EditorGUILayout.TextField("- Group Prefix", groupPrefix);
                 break;
             case Strategy.ByPrefix:
                 similarity = Mathf.Clamp(EditorGUILayout.FloatField("- Similarity", similarity), 0f, 1);
