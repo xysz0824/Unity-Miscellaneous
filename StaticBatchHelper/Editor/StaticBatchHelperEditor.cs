@@ -15,9 +15,12 @@ public class StaticBatchHelperEditor : Editor
     {
         var helper = target as StaticBatchHelper;
         var gameObject = helper.gameObject;
+        var selectObjectsProperty = serializedObject.FindProperty("selectObjects");
         var combinedMeshGUIDsProperty = serializedObject.FindProperty("combinedMeshGUIDs");
         var combinedRendererInfosProperty = serializedObject.FindProperty("combinedRendererInfos");
         var appliedPrefabGUIDProperty = serializedObject.FindProperty("appliedPrefabGUID");
+        var batchRateProperty = serializedObject.FindProperty("batchRate");
+        EditorGUILayout.PropertyField(selectObjectsProperty);
         if (combinedMeshGUIDsProperty.arraySize == 0)
         {
             if (PrefabStageUtility.GetCurrentPrefabStage() != null)
@@ -34,6 +37,7 @@ public class StaticBatchHelperEditor : Editor
             {
                 var path = EditorUtility.OpenFolderPanel("Save To Folder", "", "");
                 if (string.IsNullOrEmpty(path)) return;
+                var inactives = helper.DisactiveUnselectedObjects();
                 path = "Assets" + path.Substring(Application.dataPath.Length);
                 var meshFilters = gameObject.GetComponentsInChildren<MeshFilter>();
                 var originalMeshes = new Dictionary<MeshFilter, Mesh>();
@@ -47,6 +51,7 @@ public class StaticBatchHelperEditor : Editor
                 var combinedFilters = new List<MeshFilter>();
                 foreach (var meshFilter in meshFilters)
                 {
+                    if (meshFilter.sharedMesh == null) continue;
                     if (meshFilter.sharedMesh.name.Contains("Combined Mesh ("))
                         combinedFilters.Add(meshFilter);
                 }
@@ -56,21 +61,21 @@ public class StaticBatchHelperEditor : Editor
                     if (!combinedMeshes.Contains(combinedMesh))
                     {
                         string guid = "00000000000000000000000000000000";
-                        var assetPath = path + "/Combined Mesh_" + guid + ".mesh";
+                        var assetPath = path + "/CombinedMesh_" + guid + ".mesh";
                         AssetDatabase.CreateAsset(combinedMesh, assetPath);
                         AssetDatabase.SaveAssets();
                         AssetDatabase.ImportAsset(assetPath);
                         guid = AssetDatabase.AssetPathToGUID(assetPath);
-                        AssetDatabase.RenameAsset(assetPath, "Combined Mesh_" + guid);
+                        AssetDatabase.RenameAsset(assetPath, "CombinedMesh_" + guid);
                         combinedMeshes.Add(combinedMesh);
                         combinedMeshGUIDsProperty.arraySize++;
                         combinedMeshGUIDsProperty.GetArrayElementAtIndex(combinedMeshGUIDsProperty.arraySize - 1).stringValue = guid;
                     }
                     var rendererInfo = new StaticBatchHelper.CombinedRendererInfo();
-                    rendererInfo.renderer = meshFilter.GetComponent<MeshRenderer>();
+                    rendererInfo.meshRenderer = meshFilter.GetComponent<MeshRenderer>();
                     rendererInfo.combinedMeshID = combinedMeshes.IndexOf(combinedMesh);
                     var batchInfo = new StaticBatchHelper.StaticBatchInfo();
-                    var serializedRenderer = new SerializedObject(rendererInfo.renderer);
+                    var serializedRenderer = new SerializedObject(rendererInfo.meshRenderer);
                     var firstSubMeshProperty = serializedRenderer.FindProperty("m_StaticBatchInfo.firstSubMesh");
                     var subMeshCountProperty = serializedRenderer.FindProperty("m_StaticBatchInfo.subMeshCount");
                     batchInfo.firstSubMesh = firstSubMeshProperty.intValue;
@@ -85,11 +90,13 @@ public class StaticBatchHelperEditor : Editor
                 {
                     combinedRendererInfosProperty.arraySize++;
                     var infoProperty = combinedRendererInfosProperty.GetArrayElementAtIndex(combinedRendererInfosProperty.arraySize - 1);
-                    infoProperty.FindPropertyRelative("renderer").objectReferenceValue = rendererInfo.renderer;
+                    infoProperty.FindPropertyRelative("meshRenderer").objectReferenceValue = rendererInfo.meshRenderer;
                     infoProperty.FindPropertyRelative("combinedMeshID").intValue = rendererInfo.combinedMeshID;
                     infoProperty.FindPropertyRelative("staticBatchInfo.firstSubMesh").intValue = rendererInfo.staticBatchInfo.firstSubMesh;
                     infoProperty.FindPropertyRelative("staticBatchInfo.subMeshCount").intValue = rendererInfo.staticBatchInfo.subMeshCount;
                 }
+                helper.ReactiveUnselectedObjects(inactives);
+                batchRateProperty.floatValue = (float)(combinedFilters.Count - combinedMeshes.Count + 1) / combinedFilters.Count;
                 serializedObject.ApplyModifiedProperties();
                 EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             }
@@ -116,7 +123,7 @@ public class StaticBatchHelperEditor : Editor
                 foreach (var info in helper.combinedRendererInfos)
                 {
                     EditorGUILayout.BeginVertical(new GUIStyle("RL Background"));
-                    EditorGUILayout.ObjectField("Renderer", info.renderer, typeof(MeshRenderer), false);
+                    EditorGUILayout.ObjectField("Mesh Renderer", info.meshRenderer, typeof(MeshRenderer), false);
                     EditorGUILayout.IntField("Combined Mesh ID", info.combinedMeshID);
                     EditorGUILayout.IntField("First Sub Mesh", info.staticBatchInfo.firstSubMesh);
                     EditorGUILayout.IntField("Sub Mesh Count", info.staticBatchInfo.subMeshCount);
@@ -125,6 +132,9 @@ public class StaticBatchHelperEditor : Editor
                 EditorGUI.EndDisabledGroup();
             }
             EditorGUILayout.EndFoldoutHeaderGroup();
+            GUI.enabled = false;
+            EditorGUILayout.PropertyField(batchRateProperty);
+            GUI.enabled = true;
             if (PrefabStageUtility.GetCurrentPrefabStage() != null)
             {
                 EditorGUILayout.HelpBox("You are in prefab mode, where applying is not valid", MessageType.Error);
@@ -136,6 +146,11 @@ public class StaticBatchHelperEditor : Editor
                 Selection.activeGameObject = gameObject;
                 Unsupported.DuplicateGameObjectsUsingPasteboard();
                 var duplicate = Selection.activeGameObject;
+                var components = duplicate.GetComponentsInChildren<StaticBatchComponent>(true);
+                for (int i = 0; i < components.Length; ++i)
+                {
+                    DestroyImmediate(components[i]);
+                }
                 var duplicatedHelper = duplicate.GetComponent<StaticBatchHelper>();
                 duplicatedHelper.ApplyInEditor();
                 DestroyImmediate(duplicatedHelper);
@@ -171,6 +186,34 @@ public class StaticBatchHelperEditor : Editor
                         helper.gameObject.SetActive(false);
                     }
                 }
+            }
+            if (GUILayout.Button("Apply as Component"))
+            {
+                var combinedMesh = new List<Mesh>();
+                for (int i = 0; i < combinedMeshGUIDsProperty.arraySize; ++i)
+                {
+                    var guid = combinedMeshGUIDsProperty.GetArrayElementAtIndex(i).stringValue;
+                    var path = AssetDatabase.GUIDToAssetPath(guid);
+                    combinedMesh.Add(AssetDatabase.LoadAssetAtPath<Mesh>(path));
+                }
+                for (int i = 0; i < combinedRendererInfosProperty.arraySize; ++i)
+                {
+                    var info = combinedRendererInfosProperty.GetArrayElementAtIndex(i);
+                    var meshRenderer = info.FindPropertyRelative("meshRenderer").objectReferenceValue as MeshRenderer;
+                    var combinedMeshID = info.FindPropertyRelative("combinedMeshID").intValue;
+                    var firstSubMesh = info.FindPropertyRelative("staticBatchInfo.firstSubMesh").intValue;
+                    var subMeshCount = info.FindPropertyRelative("staticBatchInfo.subMeshCount").intValue;
+                    var component = meshRenderer.gameObject.GetComponent<StaticBatchComponent>();
+                    if (component == null)
+                    {
+                        component = meshRenderer.gameObject.AddComponent<StaticBatchComponent>();
+                    }
+                    component.root = helper.transform;
+                    component.combinedMesh = combinedMesh[combinedMeshID];
+                    component.firstSubMesh = firstSubMesh;
+                    component.subMeshCount = subMeshCount;
+                }
+                EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             }
             if (GUILayout.Button("Clear"))
             {
@@ -209,10 +252,16 @@ public class StaticBatchHelperEditor : Editor
                         }
                     }
                 }
+                var components = helper.GetComponentsInChildren<StaticBatchComponent>(true);
+                for (int i = 0; i < components.Length; ++i)
+                {
+                    DestroyImmediate(components[i]);
+                }
                 appliedPrefabGUIDProperty.stringValue = "";
                 combinedMeshGUIDsProperty.ClearArray();
                 combinedRendererInfosProperty.ClearArray();
                 serializedObject.ApplyModifiedProperties();
+                helper.gameObject.SetActive(true);
                 EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             }
         }
