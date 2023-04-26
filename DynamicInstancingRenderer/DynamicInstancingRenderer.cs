@@ -196,7 +196,7 @@ public class DynamicInstancingRenderer : MonoBehaviour
     }
     public void UpdateTransform(DynamicInstancingChild child)
     {
-        if (child.boundingID < 0 || child.boundingID >= boundingCount) return;
+        if (child.childrenID == -1) return;
         boundingSpheres[child.boundingID] = GetBoundingSphere(child.transform.localToWorldMatrix, child.Mesh.bounds);
         childDict[child.ResourceID].UpdateTransform(child.childrenID);
     }

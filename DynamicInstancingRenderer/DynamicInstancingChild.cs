@@ -21,7 +21,7 @@ public class DynamicInstancingChild : MonoBehaviour
     [NonSerialized]
     public int childrenID = -1;
     [NonSerialized]
-    public int boundingID;
+    public int boundingID = -1;
     [NonSerialized]
     public bool visible;
     void OnEnable()
