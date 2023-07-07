@@ -14,12 +14,13 @@ public partial class AssetClearanceMethods
         for (int i = text.Length - 1; i >= 0; --i)
         {
             if (text[i] == '.') break;
+            if (i == 0) return 0;
             precision++;
         }
         return precision;
     }
     [AssetClearanceMethod("AnimationClip", "检查动画是否已优化")]
-    public static bool AnimationClipOptimized(AnimationClip clip, bool scale, bool precision)
+    public static bool AnimationClipOptimized(AnimationClip clip)
     {
         var log = new StringBuilder(); 
         var curveBindings = AnimationUtility.GetCurveBindings(clip);

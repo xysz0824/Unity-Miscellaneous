@@ -299,10 +299,15 @@ public class AssetClearance
     static bool ObjectsFilter(AssetClearanceRules rules, string path)
     {
         if (!rules.enableSkipConditions || rules.skipObjects == null) return false;
+        var directory = Path.GetDirectoryName(path);
         foreach (var obj in rules.skipObjects)
         {
             if (obj.obj == null) continue;
             var objPath = AssetDatabase.GetAssetPath(obj.obj);
+            if (obj.obj is DefaultAsset && directory.StartsWith(Path.GetDirectoryName(objPath + "/")))
+            {
+                return true;
+            }
             if (objPath == path) return true;
         }
         return false;

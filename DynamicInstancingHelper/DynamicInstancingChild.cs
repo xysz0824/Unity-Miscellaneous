@@ -18,14 +18,17 @@ public class DynamicInstancingChild : MonoBehaviour
     public int layer;
     public ShadowCastingMode shadowCastingMode = ShadowCastingMode.On;
     public bool receiveShadows = true;
+    public bool enableInLowEnd;
     [NonSerialized]
     public int childrenID = -1;
     [NonSerialized]
     public int boundingID = -1;
     [NonSerialized]
-    public bool visible;
+    public bool visible = true;
     void OnEnable()
     {
+        if (!SystemInfo.supportsInstancing || !DynamicInstancingRenderer.Instance) return;
+        if (Shader.globalMaximumLOD <= DynamicInstancingRenderer.Instance.lodThreshold && !enableInLowEnd) return;
         var meshFilter = GetComponent<MeshFilter>();
         mesh = meshFilter?.sharedMesh;
         var meshRenderer = GetComponent<MeshRenderer>();
@@ -41,15 +44,15 @@ public class DynamicInstancingChild : MonoBehaviour
             Debug.LogWarning($"Material \"{material.name}\" doesn't enable instancing.");
             return;
         }
-        if (DynamicInstancingRenderer.Instance != null)
-        {
-            DynamicInstancingRenderer.Instance.Join(this);
-            meshRenderer.enabled = false;
-        }
+        DynamicInstancingRenderer.Instance.Join(this);
+        meshRenderer.enabled = false;
     }
     void Start()
     {
-        DynamicInstancingRenderer.Instance.UpdateTransform(this);
+        if (DynamicInstancingRenderer.Instance != null)
+        {
+            DynamicInstancingRenderer.Instance.UpdateTransform(this);
+        }
     }
     void OnDisable()
     {

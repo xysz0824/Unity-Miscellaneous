@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f05804274e70f72449c838cde8616d49, type: 3}
+  m_Name: LowEndRenderingAdaptorConfig
+  m_EditorClassIdentifier: 
+  replaceShader: {fileID: 4800000, guid: cbbd3f2f1c4b7f74ca092dd8109e0716, type: 3}
+  alphatestPropertyName: _Clip
+  alphatestKeyword: _ALPHATEST_ON
+  alphatestShaders:
+  - {fileID: 4800000, guid: fb1f73e7136391e4d96805da48af4410, type: 3}
+  ignoreShaderNames:
+  - shadowcaster
+  - writedepth
+  - outline
+  - colormask
+  - fogarea
+  - ui
+  - vx
+  - sprite
+  - ssblend
+  - ssnoblend
+  - fx
+  - particle
+  - water
+  - screen
+  ignoreMaterials:
+  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  ignorePackTextures:
+  - {fileID: 2800000, guid: c08dd2b95386a4f46837df75a2b38b4e, type: 3}
+  - {fileID: 2800000, guid: 25374008b57d023488e1ce9571c5427d, type: 3}
+  - {fileID: 2800000, guid: 7245965b845b8514e891fb0ff8d32f69, type: 3}
+  propertyMappingRule: '_BaseMap/_MainTex -> [MainTexture]
+
+    _BaseColor/_Color
+    -> [MainColor]
+
+    _AlphaClip -> _Cutoff
+
+    _TwoSided -> _Cull'
+  keywordMappingRule: ALPHATEST_ON -> _ALPHATEST_ON

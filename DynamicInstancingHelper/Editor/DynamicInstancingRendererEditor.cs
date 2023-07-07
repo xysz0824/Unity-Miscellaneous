@@ -14,6 +14,9 @@ public class DynamicInstancingRendererEditor : Editor
         EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(renderer.enableCulling)));
         EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(renderer.cullingCamera)));
         EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(renderer.syncTransform)));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(renderer.lodThreshold)));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(renderer.visibleProbability)));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(renderer.batchCount)));
         serializedObject.ApplyModifiedProperties();
         if (GUILayout.Button("Add Instancing To Children"))
         {
