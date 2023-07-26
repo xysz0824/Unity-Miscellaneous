@@ -94,7 +94,7 @@ public class DynamicInstancingRenderer : MonoBehaviour
             }
             hasVisibleStateChanged = true;
         }
-        public void Draw(bool cull, float visibleProbability, int batchCount)
+        public void Draw(bool cull, float visibleProbability)
         {
             if (count <= 0) return;
             if (cull && hasVisibleStateChanged)
@@ -104,7 +104,7 @@ public class DynamicInstancingRenderer : MonoBehaviour
                 int sortedIndex = 0;
                 for (int i = 0; i < count; ++i)
                 {
-                    var p = visibleProbability >= 1 ? 0 : Mathf.Sin((transforms[i].m03 * 17 + transforms[i].m13 * 42 + transforms[i].m23 * 61) * 100000f) * 0.5f + 0.5f;
+                    var p = visibleProbability >= 1f ? 0f : Mathf.Sin((transforms[i].m03 * 17 + transforms[i].m13 * 42 + transforms[i].m23 * 61) * 100000f) * 0.5f + 0.5f;
                     if (array[i].visible && p < visibleProbability)
                     {
                         sortedTransforms[sliceIndex][sortedIndex].m00 = transforms[i].m00;
@@ -160,6 +160,7 @@ public class DynamicInstancingRenderer : MonoBehaviour
     BoundingSphere[] boundingSpheres = new BoundingSphere[1];
     DynamicInstancingChild[] boundingChildren = new DynamicInstancingChild[1];
     int boundingCount;
+    Plane[] cullingPlanes = new Plane[6];
     CullJob cullJob;
     int[] visibleResults = new int[1];
     public bool enableCulling = true;
@@ -167,7 +168,7 @@ public class DynamicInstancingRenderer : MonoBehaviour
     public bool syncTransform;
     public int lodThreshold = 100;
     [Range(0, 1)]
-    public float visibleProbability = 1f;
+    public float lodProbability = 1f;
     float lastProbability = 1f;
     public int batchCount = 63;
     int lastBatchCount = 63;
@@ -282,12 +283,11 @@ public class DynamicInstancingRenderer : MonoBehaviour
         if (cullingCamera == null) return;
         if (cullingCamera.TryGetCullingParameters(out var cullingParameters))
         {
-            var planes = new Plane[6];
-            for (int i = 0; i < 6; ++i)
+            for (int i = 0; i < cullingPlanes.Length; ++i)
             {
-                planes[i] = cullingParameters.GetCullingPlane(i);
+                cullingPlanes[i] = cullingParameters.GetCullingPlane(i);
             }
-            cullJob.cullingPlanes.CopyFrom(planes);
+            cullJob.cullingPlanes.CopyFrom(cullingPlanes);
             cullJob.boundingSpheres.CopyFrom(boundingSpheres);
             var handle = cullJob.Schedule(boundingCount, 64);
             handle.Complete();
@@ -315,9 +315,9 @@ public class DynamicInstancingRenderer : MonoBehaviour
     {
         var children = childDict.Values;
         if (cullingCamera == null) cullingCamera = Camera.main;
-        if (lastProbability != visibleProbability)
+        if (lastProbability != lodProbability)
         {
-            lastProbability = visibleProbability;
+            lastProbability = lodProbability;
             foreach (var childList in children)
             {
                 childList.hasVisibleStateChanged = true;
@@ -344,9 +344,10 @@ public class DynamicInstancingRenderer : MonoBehaviour
             }
             Profiler.EndSample();
         }
+        var probability = Shader.globalMaximumLOD <= lodThreshold ? lodProbability : 1f;
         foreach (var childList in children)
         {
-            childList.Draw(enableCulling, visibleProbability, batchCount);
+            childList.Draw(enableCulling, probability);
         }
     }
     void OnDestroy()
