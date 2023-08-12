@@ -14,6 +14,7 @@ public class DynamicInstancingChild : MonoBehaviour
     public Material Material => material;
     long resourceID;
     public long ResourceID => resourceID;
+    DynamicInstancingCollection collection;
     public bool syncTransform;
     public int layer;
     public ShadowCastingMode shadowCastingMode = ShadowCastingMode.On;
@@ -46,6 +47,8 @@ public class DynamicInstancingChild : MonoBehaviour
         }
         DynamicInstancingRenderer.Instance.Join(this);
         meshRenderer.enabled = false;
+        collection = GetComponentInParent<DynamicInstancingCollection>();
+        if (collection != null) collection.AddChild(this);
     }
     void Start()
     {
@@ -64,6 +67,16 @@ public class DynamicInstancingChild : MonoBehaviour
             {
                 meshRenderer.enabled = true;
             }
+            if (collection != null) collection.RemoveChild(this);
+        }
+    }
+    void OnTransformChildrenChanged()
+    {
+        if (DynamicInstancingRenderer.Instance != null)
+        {
+            if (collection != null) collection.RemoveChild(this);
+            collection = GetComponentInParent<DynamicInstancingCollection>();
+            if (collection != null) collection.AddChild(this);
         }
     }
     void OnDestroy()

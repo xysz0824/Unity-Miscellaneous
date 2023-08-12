@@ -2,24 +2,29 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace NexgenDragon
+public class DynamicInstancingBehaviour : StateMachineBehaviour
 {
-    public class DynamicInstancingBehaviour : StateMachineBehaviour
+    DynamicInstancingCollection collection;
+    public override void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
-        DynamicInstancingChild[] children;
-        public override void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+        collection = animator.GetComponent<DynamicInstancingCollection>();
+        if (collection == null)
         {
-            children = animator.GetComponentsInChildren<DynamicInstancingChild>(true);
-        }
-        public override void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
-        {
-            if (DynamicInstancingRenderer.Instance == null) return;
-            if (animator.GetNextAnimatorStateInfo(layerIndex).fullPathHash == 0 && stateInfo.normalizedTime >= 1.0f) return;
-            for (int i = 0; i < children.Length; ++i)
+            collection = animator.gameObject.AddComponent<DynamicInstancingCollection>();
+            var children = animator.GetComponentsInChildren<DynamicInstancingChild>(true);
+            foreach (var child in children)
             {
-                if (children[i] != null)
-                    DynamicInstancingRenderer.Instance.UpdateTransform(children[i]);
+                DynamicInstancingRenderer.Instance.UpdateTransform(child);
             }
+        }
+    }
+    public override void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        if (DynamicInstancingRenderer.Instance == null) return;
+        if (animator.GetNextAnimatorStateInfo(layerIndex).fullPathHash == 0 && stateInfo.normalizedTime >= 1.0f) return;
+        foreach (var child in collection.Children)
+        {
+            DynamicInstancingRenderer.Instance.UpdateTransform(child);
         }
     }
 }
