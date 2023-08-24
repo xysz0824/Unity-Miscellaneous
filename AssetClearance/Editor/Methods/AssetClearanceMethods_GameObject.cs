@@ -102,6 +102,10 @@ public partial class AssetClearanceMethods
         {
             AddLog($"子物体数量{transforms.Length}超过指定数量{maxCount}", transforms.Length);
         }
+        else
+        {
+            AddLog($"子物体数量{transforms.Length}", transforms.Length);
+        }
         return result;
     }
     [AssetClearanceMethod("GameObject", "检查组件是否存在（包含子物体）")]
@@ -206,6 +210,10 @@ public partial class AssetClearanceMethods
         if (!result)
         {
             AddLog($"指定组件{componentName}数量{componentCount}超过指定数量{maxCount}", componentCount);
+        }
+        else
+        {
+            AddLog($"指定组件{componentName}数量{componentCount}", componentCount);
         }
         return result;
     }
@@ -641,14 +649,18 @@ public partial class AssetClearanceMethods
             }
         }
         bool result = count <= maxCount;
+        int order = count;
         if (!result)
         {
-            int order = count;
             AddLog($"预估Drawcall数量{count}已超过指定数量{maxCount}", order);
-            foreach (var kv in drawcallDict)
-            {
-                AddLog($"该物体计入{kv.Value}个Drawcall", order, kv.Key);
-            }
+        }
+        else
+        {
+            AddLog($"预估Drawcall数量{count}", order);
+        }
+        foreach (var kv in drawcallDict)
+        {
+            AddLog($"该物体计入{kv.Value}个Drawcall", order, kv.Key);
         }
         return result;
     }
@@ -919,6 +931,10 @@ public partial class AssetClearanceMethods
                     AddLog($"该贴图占用内存{FormatBytes(memory)}MB超过指定大小{memoryLimit}MB", (int)(memory / 1024 / 1024), referencer, texture);
                     ok = false;
                 }
+                else
+                {
+                    AddLog($"该贴图占用内存{FormatBytes(memory)}MB", (int)(memory / 1024 / 1024), referencer, texture);
+                }
             }
         }
         return ok;
@@ -938,18 +954,22 @@ public partial class AssetClearanceMethods
             }
         }
         bool result = storageMemory <= memoryLimit * 1024 * 1024;
+        int order = (int)(storageMemory / 1024 / 1024);
         if (!result)
         {
-            int order = (int)(storageMemory / 1024 / 1024);
             AddLog($"当前平台贴图占用内存{FormatBytes(storageMemory)}MB超过指定大小{memoryLimit}MB", order);
-            foreach (var kv in textures)
+        }
+        else
+        {
+            AddLog($"当前平台贴图占用内存{FormatBytes(storageMemory)}MB", order);
+        }
+        foreach (var kv in textures)
+        {
+            var referencer = kv.Key;
+            var textureList = kv.Value;
+            foreach (var texture in textureList)
             {
-                var referencer = kv.Key;
-                var textureList = kv.Value;
-                foreach (var texture in textureList)
-                {
-                    AddLog($"引用了贴图{texture.name}占用内存{FormatBytes(GetTextureStorageMemory(texture))}MB", order, referencer, texture);
-                }
+                AddLog($"引用了贴图{texture.name}占用内存{FormatBytes(GetTextureStorageMemory(texture))}MB", order, referencer, texture);
             }
         }
         return result;
@@ -960,16 +980,20 @@ public partial class AssetClearanceMethods
         var textures = GetDependencyTextures(gameObject, includePaths, excludePaths, true);
         var count = textures.Sum(i => i.Value.Count);
         bool result = count <= maxCount;
+        int order = count;
         if (!result)
         {
-            int order = count;
             AddLog($"贴图数量{count}超过指定数量{maxCount}", order);
-            foreach (var kv in textures)
-            {
-                var referencer = kv.Key;
-                var subCount = kv.Value.Count;
-                AddLog($"引用了不同贴图{subCount}张", order, referencer);
-            }
+        }
+        else
+        {
+            AddLog($"贴图数量{count}", order);
+        }
+        foreach (var kv in textures)
+        {
+            var referencer = kv.Key;
+            var subCount = kv.Value.Count;
+            AddLog($"引用了不同贴图{subCount}张", order, referencer);
         }
         return result;
     }
@@ -1042,18 +1066,56 @@ public partial class AssetClearanceMethods
             }
         }
         bool result = runtimeMemory <= memoryLimit * 1024 * 1024;
+        int order = (int)(runtimeMemory / 1024 / 1024);
         if (!result)
         {
-            int order = (int)(runtimeMemory / 1024 / 1024);
             AddLog($"引用动画总占用内存大小{FormatBytes(runtimeMemory)}MB超过指定大小{memoryLimit}MB", order);
-            foreach (var kv in clips)
+        }
+        else
+        {
+            AddLog($"引用动画总占用内存大小{FormatBytes(runtimeMemory)}MB", order);
+        }
+        foreach (var kv in clips)
+        {
+            var referencer = kv.Key;
+            var clipList = kv.Value;
+            foreach (var clip in clipList)
             {
-                var referencer = kv.Key;
-                var clipList = kv.Value;
-                foreach (var clip in clipList)
-                {
-                    AddLog($"引用了动画{clip.name}占用内存{FormatBytes(GetAnimationClipMemory(clip))}MB", order, referencer, clip);
-                }
+                AddLog($"引用了动画{clip.name}占用内存{FormatBytes(GetAnimationClipMemory(clip))}MB", order, referencer, clip);
+            }
+        }
+        return result;
+    }
+    [AssetClearanceMethod("GameObject", "统计GameObject下引用动画总大小（显示值）不超过指定大小")]
+    public static bool GameObjectAnimationClipsEditorSize([ExceptModel] GameObject gameObject, int sizeLimit, string[] includePaths, string[] excludePaths)
+    {
+        var clips = GetDependencyAnimationClips(gameObject, includePaths, excludePaths, true);
+        long size = 0;
+        foreach (var kv in clips)
+        {
+            var clipList = kv.Value;
+            foreach (var clip in clipList)
+            {
+                size += GetAnimationClipEditorSize(clip);
+            }
+        }
+        bool result = size <= sizeLimit * 1024 * 1024;
+        int order = (int)(size / 1024 / 1024);
+        if (!result)
+        {
+            AddLog($"该文件夹下动画总大小（显示值）{FormatBytes(size)}MB超过指定大小{sizeLimit}MB", (int)(sizeLimit / 1024 / 1024));
+        }
+        else
+        {
+            AddLog($"该文件夹下动画总大小（显示值）{FormatBytes(size)}MB", (int)(sizeLimit / 1024 / 1024));
+        }
+        foreach (var kv in clips)
+        {
+            var referencer = kv.Key;
+            var clipList = kv.Value;
+            foreach (var clip in clipList)
+            {
+                AddLog($"引用了动画{clip.name}大小{FormatBytes(GetAnimationClipEditorSize(clip))}MB", order, referencer, clip);
             }
         }
         return result;
@@ -1064,16 +1126,20 @@ public partial class AssetClearanceMethods
         var clips = GetDependencyAnimationClips(gameObject, includePaths, excludePaths, true);
         var count = clips.Sum(i => i.Value.Count);
         bool result = count <= maxCount;
+        int order = count;
         if (!result)
         {
-            int order = count;
             AddLog($"引用动画总数量{count}超过指定大小{maxCount}");
-            foreach (var kv in clips)
-            {
-                var referencer = kv.Key;
-                var subCount = kv.Value.Count;
-                AddLog($"引用了不同动画{subCount}个", order, referencer);
-            }
+        }
+        else
+        {
+            AddLog($"引用动画总数量");
+        }
+        foreach (var kv in clips)
+        {
+            var referencer = kv.Key;
+            var subCount = kv.Value.Count;
+            AddLog($"引用了不同动画{subCount}个", order, referencer);
         }
         return result;
     }
@@ -1111,18 +1177,22 @@ public partial class AssetClearanceMethods
             }
         }
         bool result = totalTime <= maxTime;
+        int order = (int)(totalTime * 100);
         if (!result)
         {
-            int order = (int)(totalTime * 100);
             AddLog($"引用动画总时间长度{totalTime.ToString("f2")}s超过指定长度{maxTime}s", order);
-            foreach (var kv in clips)
+        }
+        else
+        {
+            AddLog($"引用动画总时间长度{totalTime.ToString("f2")}s", order);
+        }
+        foreach (var kv in clips)
+        {
+            var referencer = kv.Key;
+            var clipList = kv.Value;
+            foreach (var clip in clipList)
             {
-                var referencer = kv.Key;
-                var clipList = kv.Value;
-                foreach (var clip in clipList)
-                {
-                    AddLog($"引用了动画{clip.name}长度{clip.length.ToString("f2")}s", order, referencer, clip);
-                }
+                AddLog($"引用了动画{clip.name}长度{clip.length.ToString("f2")}s", order, referencer, clip);
             }
         }
         return result;
@@ -1133,16 +1203,20 @@ public partial class AssetClearanceMethods
         var materials = GetDependencyMaterials(gameObject, includePaths, excludePaths, true);
         var count = materials.Sum(i => i.Value.Count);
         bool result = count <= maxCount;
+        int order = count;
         if (!result)
         {
-            int order = count;
             AddLog($"材质球数量{count}已超过指定数量{maxCount}", order);
-            foreach (var kv in materials)
-            {
-                var referencer = kv.Key;
-                var subCount = kv.Value.Count;
-                AddLog($"引用了不同材质球{subCount}个", order, referencer);
-            }
+        }
+        else
+        {
+            AddLog($"材质球数量{count}", order);
+        }
+        foreach (var kv in materials)
+        {
+            var referencer = kv.Key;
+            var subCount = kv.Value.Count;
+            AddLog($"引用了不同材质球{subCount}个", order, referencer);
         }
         return result;
     }

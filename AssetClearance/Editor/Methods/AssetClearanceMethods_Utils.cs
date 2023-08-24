@@ -306,6 +306,14 @@ public partial class AssetClearanceMethods
     {
         return Profiler.GetRuntimeMemorySizeLong(clip) / 2;
     }
+    static long GetAnimationClipEditorSize(AnimationClip clip)
+    {
+        MethodInfo methodInfo = typeof(AnimationUtility).GetMethod("GetAnimationClipStats", BindingFlags.Static | BindingFlags.NonPublic);
+        Type type = typeof(EditorGUI).Assembly.GetType("UnityEditor.AnimationClipStats");
+        FieldInfo sizeInfo = type.GetField("size", BindingFlags.Public | BindingFlags.Instance);
+        var stats = methodInfo.Invoke(null, new object[] { clip });
+        return (int)sizeInfo.GetValue(stats);
+    }
     static Dictionary<GameObject, List<AnimationClip>> GetDependencyAnimationClips(GameObject gameObject, string[] includePaths, string[] excludePaths, bool includeInactive)
     {
         var clipHashSet = new HashSet<AnimationClip>();

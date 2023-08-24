@@ -1,0 +1,166 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f15c0cf5d73bed4ca5f22ff4e9444b2, type: 3}
+  m_Name: GameObjectTexturePlatformSettings
+  m_EditorClassIdentifier: 
+  rule:
+    template: {fileID: 0}
+    enable: 0
+    name: "\u68C0\u67E5GameObject\u4E0B\u8D34\u56FE\u5E73\u53F0\u5BFC\u5165\u8BBE\u7F6E"
+    conditions:
+    - priority: 0
+      method:
+        name: GameObjectTexturePlatformFormat
+        intParamCounts: 01000000
+        intParams: ffffffff
+        floatParamCounts: 
+        floatParams: []
+        boolParamCounts: 
+        boolParams: 
+        stringParamCounts: 010000000100000001000000
+        stringParams:
+        - Default
+        - 
+        - 
+        objectParamCounts: 
+        objectParams: []
+      negation: 0
+      logicOperator: 1
+    - priority: 0
+      method:
+        name: GameObjectTexturePlatformCompression
+        intParamCounts: 01000000
+        intParams: 01000000
+        floatParamCounts: 
+        floatParams: []
+        boolParamCounts: 
+        boolParams: 
+        stringParamCounts: 010000000100000001000000
+        stringParams:
+        - Default
+        - 
+        - 
+        objectParamCounts: 
+        objectParams: []
+      negation: 0
+      logicOperator: 1
+    - priority: 0
+      method:
+        name: GameObjectTextureSize
+        intParamCounts: 0100000001000000
+        intParams: 0004000000040000
+        floatParamCounts: 
+        floatParams: []
+        boolParamCounts: 
+        boolParams: 
+        stringParamCounts: 010000000100000001000000
+        stringParams:
+        - Default
+        - 
+        - 
+        objectParamCounts: 
+        objectParams: []
+      negation: 0
+      logicOperator: 0
+    trueLogType: 0
+    falseLogType: 3
+    helpURL: 
+    fixMethod:
+      name: GameObjectSetTexturePlatformSettings
+      intParamCounts: 01000000010000000100000001000000
+      intParams: 0004000000000000ffffffff01000000
+      floatParamCounts: 
+      floatParams: []
+      boolParamCounts: 
+      boolParams: 
+      stringParamCounts: 01000000
+      stringParams:
+      - Default
+      objectParamCounts: 
+      objectParams: []
+    fixNotice: 
+  unappliedSave:
+    template: {fileID: 0}
+    enable: 0
+    name: "\u68C0\u67E5GameObject\u4E0B\u8D34\u56FE\u5E73\u53F0\u5BFC\u5165\u8BBE\u7F6E"
+    conditions:
+    - priority: 0
+      method:
+        name: GameObjectTexturePlatformFormat
+        intParamCounts: 01000000
+        intParams: ffffffff
+        floatParamCounts: 
+        floatParams: []
+        boolParamCounts: 
+        boolParams: 
+        stringParamCounts: 010000000100000001000000
+        stringParams:
+        - Default
+        - 
+        - 
+        objectParamCounts: 
+        objectParams: []
+      negation: 0
+      logicOperator: 1
+    - priority: 0
+      method:
+        name: GameObjectTexturePlatformCompression
+        intParamCounts: 01000000
+        intParams: 01000000
+        floatParamCounts: 
+        floatParams: []
+        boolParamCounts: 
+        boolParams: 
+        stringParamCounts: 010000000100000001000000
+        stringParams:
+        - Default
+        - 
+        - 
+        objectParamCounts: 
+        objectParams: []
+      negation: 0
+      logicOperator: 1
+    - priority: 0
+      method:
+        name: GameObjectTextureSize
+        intParamCounts: 0100000001000000
+        intParams: 0004000000040000
+        floatParamCounts: 
+        floatParams: []
+        boolParamCounts: 
+        boolParams: 
+        stringParamCounts: 010000000100000001000000
+        stringParams:
+        - Default
+        - 
+        - 
+        objectParamCounts: 
+        objectParams: []
+      negation: 0
+      logicOperator: 0
+    trueLogType: 0
+    falseLogType: 3
+    helpURL: 
+    fixMethod:
+      name: GameObjectSetTexturePlatformSettings
+      intParamCounts: 01000000010000000100000001000000
+      intParams: 0004000000000000ffffffff01000000
+      floatParamCounts: 
+      floatParams: []
+      boolParamCounts: 
+      boolParams: 
+      stringParamCounts: 01000000
+      stringParams:
+      - Default
+      objectParamCounts: 
+      objectParams: []
+    fixNotice: 

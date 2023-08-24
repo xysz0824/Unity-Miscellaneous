@@ -31,6 +31,32 @@ public partial class AssetClearanceMethods
         {
             AddLog($"该文件夹下AnimatorController引用动画总占用内存大小{FormatBytes(runtimeMemory)}MB超过指定大小{memoryLimit}MB", (int)(runtimeMemory / 1024 / 1024));
         }
+        else
+        {
+            AddLog($"该文件夹下AnimatorController引用动画总占用内存大小{FormatBytes(runtimeMemory)}MB", (int)(runtimeMemory / 1024 / 1024));
+        }
+        return result;
+    }
+    [AssetClearanceMethod("Folder", "统计文件夹下动画总大小（显示值）不超过指定大小")]
+    public static bool FolderAnimationClipsEditorSize(DefaultAsset folder, int sizeLimit)
+    {
+        var guids = AssetDatabase.FindAssets("t:AnimationClip", new string[] { AssetDatabase.GetAssetPath(folder) });
+        long size = 0;
+        foreach (var guid in guids)
+        {
+            var assetPath = AssetDatabase.GUIDToAssetPath(guid);
+            var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
+            size += GetAnimationClipEditorSize(clip);
+        }
+        bool result = size <= sizeLimit * 1024 * 1024;
+        if (!result)
+        {
+            AddLog($"该文件夹下动画总大小（显示值）{FormatBytes(size)}MB超过指定大小{sizeLimit}MB", (int)(sizeLimit / 1024 / 1024));
+        }
+        else
+        {
+            AddLog($"该文件夹下动画总大小（显示值）{FormatBytes(size)}MB", (int)(sizeLimit / 1024 / 1024));
+        }
         return result;
     }
     [AssetClearanceMethod("Folder", "统计文件夹下材质球数量不超过指定数量")]
@@ -41,6 +67,10 @@ public partial class AssetClearanceMethods
         if (!result)
         {
             AddLog($"材质球数量{guids.Length}已超过指定数量{maxCount}", guids.Length);
+        }
+        else
+        {
+            AddLog($"材质球数量{guids.Length}", guids.Length);
         }
         return result;
     }
@@ -78,6 +108,10 @@ public partial class AssetClearanceMethods
         {
             AddLog($"所有网格面数总数{totalCount}超过指定数量{maxCount}", totalCount);
         }
+        else
+        {
+            AddLog($"所有网格面数总数{totalCount}", totalCount);
+        }
         return result;
     }
     [AssetClearanceMethod("Folder", "统计文件夹下模型所有网格占用内存是否不超过指定大小（MB）")]
@@ -114,6 +148,10 @@ public partial class AssetClearanceMethods
         {
             AddLog($"所有网格占用内存{FormatBytes(runtimeMemory)}MB超过指定大小{memoryLimit}MB", (int)(runtimeMemory / 1024 / 1024));
         }
+        else
+        {
+            AddLog($"所有网格占用内存{FormatBytes(runtimeMemory)}MB", (int)(runtimeMemory / 1024 / 1024));
+        }
         return result;
     }
     [AssetClearanceMethod("Folder", "统计文件夹下当前平台的总贴图占用内存是否不超过指定大小（MB）")]
@@ -133,6 +171,10 @@ public partial class AssetClearanceMethods
         {
             AddLog($"当前平台所有贴图占用内存大小{FormatBytes(storageMemory)}MB超过指定大小{memoryLimit}MB", (int)(storageMemory / 1024 / 1024));
         }
+        else
+        {
+            AddLog($"当前平台所有贴图占用内存大小{FormatBytes(storageMemory)}MB", (int)(storageMemory / 1024 / 1024));
+        }
         return result;
     }
     [AssetClearanceMethod("Folder", "统计文件夹下贴图数量不超过指定数量")]
@@ -143,6 +185,10 @@ public partial class AssetClearanceMethods
         if (!result)
         {
             AddLog($"贴图数量{guids.Length}超过指定数量{maxCount}", guids.Length);
+        }
+        else
+        {
+            AddLog($"贴图数量{guids.Length}", guids.Length);
         }
         return result;
     }
@@ -164,6 +210,10 @@ public partial class AssetClearanceMethods
         if (!result)
         {
             AddLog($"贴图面积当量{areaCount}张{size}图，超过指定数量{maxCount}张", (int)areaCount);
+        }
+        else
+        {
+            AddLog($"贴图面积当量{areaCount}张{size}图", (int)areaCount);
         }
         return result;
     }
