@@ -29,6 +29,7 @@ namespace Coffee.UIExtensions
         private SerializedProperty _spIgnoreCanvasScaler;
         private SerializedProperty _spAnimatableProperties;
         private SerializedProperty _spBoostByJobSystem;
+        private SerializedProperty _spSyncTransform;
 
         private ReorderableList _ro;
         private bool _xyzMode;
@@ -57,6 +58,7 @@ namespace Coffee.UIExtensions
             _spIgnoreCanvasScaler = serializedObject.FindProperty("m_IgnoreCanvasScaler");
             _spAnimatableProperties = serializedObject.FindProperty("m_AnimatableProperties");
             _spBoostByJobSystem = serializedObject.FindProperty("m_BoostByJobSystem");
+            _spSyncTransform = serializedObject.FindProperty("m_SyncTransform");
 
             var sp = serializedObject.FindProperty("m_Particles");
             _ro = new ReorderableList(sp.serializedObject, sp, true, true, true, true);
@@ -162,6 +164,10 @@ namespace Coffee.UIExtensions
             }
 
             EditorGUILayout.PropertyField(_spBoostByJobSystem);
+            if (_spBoostByJobSystem.boolValue)
+            {
+                EditorGUILayout.PropertyField(_spSyncTransform);
+            }
 
             // Target ParticleSystems.
             _ro.DoLayoutList();

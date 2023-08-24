@@ -39,6 +39,9 @@ namespace Coffee.UIExtensions
         [Tooltip("Boost by Job System")] [SerializeField]
         bool m_BoostByJobSystem;
 
+        [Tooltip("- Sync Transform")] [SerializeField]
+        bool m_SyncTransform;
+
         [Tooltip("Particles")] [SerializeField]
         private List<ParticleSystem> m_Particles = new List<ParticleSystem>();
         private List<ParticleSystemRenderer> m_ParticleRenderers = new List<ParticleSystemRenderer>();
@@ -80,6 +83,12 @@ namespace Coffee.UIExtensions
         {
             get => m_BoostByJobSystem;
             set => m_BoostByJobSystem = value;
+        }
+
+        public bool syncTransform
+        {
+            get => m_SyncTransform;
+            set => m_SyncTransform = value;
         }
 
         /// <summary>
@@ -386,6 +395,7 @@ namespace Coffee.UIExtensions
             base.OnEnable();
 
             InitializeIfNeeded();
+            UpdateMatrix();
         }
 
         /// <summary>
@@ -418,6 +428,164 @@ namespace Coffee.UIExtensions
         /// </summary>
         protected override void OnDidApplyAnimationProperties()
         {
+        }
+
+        List<Matrix4x4> m_matrices = new List<Matrix4x4>();
+        public List<Matrix4x4> Matrices => m_matrices;
+        List<Matrix4x4> m_alignMatrices = new List<Matrix4x4>();
+        public List<Matrix4x4> AlignMatrices => m_alignMatrices;
+        public void UpdateMatrix()
+        {
+            if (!IsActive()) return;
+            // Cache position
+            var particlePosition = transform.position;
+            var particleScale = ignoreCanvasScaler
+                ? Vector3.Scale(canvas.rootCanvas.transform.localScale, scale3D)
+                : scale3D;
+            var diff = particlePosition - cachedPosition;
+            diff.x *= 1f - 1f / Mathf.Max(0.001f, particleScale.x);
+            diff.y *= 1f - 1f / Mathf.Max(0.001f, particleScale.y);
+            diff.z *= 1f - 1f / Mathf.Max(0.001f, particleScale.z);
+            cachedPosition = particlePosition;
+            var camera = BakingCamera.GetCamera(canvas);
+            var root = transform;
+            var rootMatrix = Matrix4x4.Rotate(root.rotation).inverse * Matrix4x4.Scale(root.lossyScale).inverse;
+            if (m_matrices.Count < particles.Count)
+            {
+                int addCount = particles.Count - m_matrices.Count;
+                for (int i = 0; i < addCount; ++i)
+                {
+                    m_matrices.Add(new Matrix4x4());
+                }
+            }
+            if (m_alignMatrices.Count < particles.Count)
+            {
+                int addCount = particles.Count - m_alignMatrices.Count;
+                for (int i = 0; i < addCount; ++i)
+                {
+                    m_alignMatrices.Add(new Matrix4x4());
+                }
+            }
+            for (int i = 0; i < particles.Count; ++i)
+            {
+                var ps = particles[i];
+                var r = particleRenderers[i];
+                // Extra world simulation.
+                if (ps.main.simulationSpace == ParticleSystemSimulationSpace.World && 0 < diff.sqrMagnitude)
+                {
+                    if (diff.sqrMagnitude > 0)
+                    {
+                        if (UIParticleUpdater.s_Particles.Length < ps.particleCount)
+                        {
+                            var size = Mathf.NextPowerOfTwo(ps.particleCount);
+                            UIParticleUpdater.s_Particles = new ParticleSystem.Particle[size];
+                        }
+                        ps.GetParticles(UIParticleUpdater.s_Particles);
+                        for (var j = 0; j < ps.particleCount; j++)
+                        {
+                            var p = UIParticleUpdater.s_Particles[j];
+                            p.position += diff;
+                            UIParticleUpdater.s_Particles[j] = p;
+                        }
+                        ps.SetParticles(UIParticleUpdater.s_Particles, ps.particleCount);
+                    }
+                }
+                if (r.renderMode != ParticleSystemRenderMode.Mesh)
+                {
+                    var transform = ps.transform;
+                    var position = transform.position;
+                    var rotationMat = Matrix4x4.Rotate(transform.rotation);
+                    var rotationMatInv = rotationMat.inverse;
+                    var cameraRotation = camera.transform.rotation;
+                    if (transform != root)
+                    {
+                        m_matrices[i] = rootMatrix * rotationMat;
+                        if (ps.main.scalingMode == ParticleSystemScalingMode.Hierarchy) m_matrices[i] *= Matrix4x4.Scale(transform.lossyScale);
+                        if (ps.main.simulationSpace == ParticleSystemSimulationSpace.Local)
+                        {
+                            var relativePos = root.worldToLocalMatrix * new Vector4(position.x, position.y, position.z, 1);
+                            m_matrices[i] = Matrix4x4.Translate(relativePos) * m_matrices[i];
+                        }
+                        else
+                        {
+                            m_matrices[i] *= Matrix4x4.Translate(-root.position);
+                        }
+                    }
+                    else
+                    {
+                        var simulationSpace = ps.main.simulationSpace;
+                        if (simulationSpace == ParticleSystemSimulationSpace.Custom && ps.main.customSimulationSpace == null)
+                            simulationSpace = ParticleSystemSimulationSpace.Local;
+
+                        switch (simulationSpace)
+                        {
+                            case ParticleSystemSimulationSpace.Local:
+                                m_matrices[i] = rotationMatInv * Matrix4x4.Scale(transform.lossyScale).inverse;
+                                break;
+                            case ParticleSystemSimulationSpace.World:
+                                m_matrices[i] = transform.worldToLocalMatrix;
+                                break;
+                            case ParticleSystemSimulationSpace.Custom:
+                                // #78: Support custom simulation space.
+                                var simulationPosition = ps.main.customSimulationSpace != null ? ps.main.customSimulationSpace.position : Vector3.zero;
+                                m_matrices[i] = transform.worldToLocalMatrix * Matrix4x4.Translate(simulationPosition);
+                                break;
+                            default:
+                                m_matrices[i] = Matrix4x4.identity;
+                                break;
+                        }
+                    }
+                    switch (r.alignment)
+                    {
+                        case ParticleSystemRenderSpace.View:
+                            m_alignMatrices[i] = rotationMatInv * Matrix4x4.Rotate(cameraRotation);
+                            break;
+                        case ParticleSystemRenderSpace.World:
+                            m_alignMatrices[i] = rotationMatInv;
+                            break;
+                        default:
+                            m_alignMatrices[i] = Matrix4x4.identity;
+                            break;
+                    }
+                }
+                else
+                {
+                    if (ps.transform != root)
+                    {
+                        if (ps.main.simulationSpace == ParticleSystemSimulationSpace.Local)
+                        {
+                            var relativePos = root.InverseTransformPoint(ps.transform.position);
+                            m_matrices[i] = Matrix4x4.Translate(relativePos) * rootMatrix;
+                        }
+                        else
+                        {
+                            m_matrices[i] = rootMatrix * Matrix4x4.Translate(-root.position);
+                        }
+                    }
+                    else
+                    {
+                        m_matrices[i] = UIParticleUpdater.GetScaledMatrix(ps);
+                    }
+                }
+            }
+        }
+
+        protected override void OnCanvasHierarchyChanged()
+        {
+            base.OnCanvasHierarchyChanged();
+            UpdateMatrix();
+        }
+
+        protected override void OnRectTransformDimensionsChange()
+        {
+            base.OnRectTransformDimensionsChange();
+            UpdateMatrix();
+        }
+
+        protected override void OnTransformParentChanged()
+        {
+            base.OnTransformParentChanged();
+            UpdateMatrix();
         }
 
         private void InitializeIfNeeded()

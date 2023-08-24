@@ -12,7 +12,7 @@ namespace Coffee.UIExtensions
     internal static class UIParticleUpdater
     {
         static readonly List<UIParticle> s_ActiveParticles = new List<UIParticle>();
-        static ParticleSystem.Particle[] s_Particles = new ParticleSystem.Particle[2048];
+        public static ParticleSystem.Particle[] s_Particles = new ParticleSystem.Particle[2048];
 
 
         public static void Register(UIParticle particle)
@@ -63,8 +63,50 @@ namespace Coffee.UIExtensions
 
             Canvas.willRenderCanvases -= Refresh;
             Canvas.willRenderCanvases += Refresh;
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.playModeStateChanged -= DestroyNativeContainer;
+            UnityEditor.EditorApplication.playModeStateChanged += DestroyNativeContainer;
+#endif
         }
 
+#if UNITY_EDITOR
+        private static void DestroyNativeContainer(UnityEditor.PlayModeStateChange state)
+        {
+            if (particleSystemNatives != null)
+            {
+                var values = particleSystemNatives.Values;
+                foreach (var val in values)
+                {
+                    val.Dispose();
+                }
+            }
+            particleSystemNatives = new Dictionary<int, ParticleSystemNative>();
+            if (jobHandles.IsCreated)
+            {
+                jobHandles.Dispose();
+                jobHandles = default;
+            }
+            if (meshJob.vertices.IsCreated)
+            {
+                meshJob.vertices.Dispose();
+                meshJob.vertices = default;
+                meshJob.colors.Dispose();
+                meshJob.colors = default;
+                meshJob.uvs.Dispose();
+                meshJob.uvs = default;
+            }
+            if (meshJob.indices.IsCreated)
+            {
+                meshJob.indices.Dispose();
+                meshJob.indices = default;
+            }
+            if (meshJob.particles.IsCreated)
+            {
+                meshJob.particles.Dispose();
+                meshJob.particles = default;
+            }
+        }
+#endif
         private static void Refresh()
         {
             Profiler.BeginSample("[UIParticle] Refresh");
@@ -82,9 +124,17 @@ namespace Coffee.UIExtensions
             Profiler.EndSample();
         }
 
+        static bool HasDisabledCanvas(Transform trans)
+        {
+            if (trans == null) return false;
+            var canvas = trans.GetComponent<Canvas>();
+            if (canvas != null && !canvas.enabled) return true;
+            return HasDisabledCanvas(trans.parent);
+        }
+
         private static void Refresh(UIParticle particle)
         {
-            if (!particle || !particle.canvas || !particle.canvasRenderer) return;
+            if (!particle || !particle.canvas || !particle.canvasRenderer || HasDisabledCanvas(particle.transform)) return;
 
             // #102: Do not bake particle system to mesh when the alpha is zero.
             if (Mathf.Approximately(particle.canvasRenderer.GetInheritedAlpha(), 0))
@@ -136,7 +186,7 @@ namespace Coffee.UIExtensions
             transform.localScale = modifiedScale;
         }
 
-        private static Matrix4x4 GetScaledMatrix(ParticleSystem particle)
+        public static Matrix4x4 GetScaledMatrix(ParticleSystem particle)
         {
             var transform = particle.transform;
             var main = particle.main;
@@ -281,6 +331,7 @@ namespace Coffee.UIExtensions
 
         private static bool CanBakeMesh(ParticleSystemRenderer renderer)
         {
+            if (renderer == null) return false;
             // #69: Editor crashes when mesh is set to null when `ParticleSystem.RenderMode = Mesh`
             if (renderer.renderMode == ParticleSystemRenderMode.Mesh && renderer.mesh == null) return false;
 
@@ -301,6 +352,7 @@ namespace Coffee.UIExtensions
         static MeshJob meshJob;
         static Dictionary<int, Mesh> bakedTrailMeshesMap;
         static TransformJob transformJob;
+        static ColorSpaceJob colorSpaceJob;
         static IndexJob indexJob;
         static Dictionary<int, KeyValuePair<int, int>> bakedIndexMap;
         static NativeArray<JobHandle> jobHandles;
@@ -333,36 +385,32 @@ namespace Coffee.UIExtensions
 
         private static void BakeMeshPerformant(UIParticle particle)
         {
+#if !UNITY_EDITOR
+            if (particle.syncTransform)
+#endif
+            {
+                particle.UpdateMatrix();
+            }
             // Get camera for baking mesh.
             Profiler.BeginSample("[UIParticle] Bake Mesh > Prepare Matrix");
             var camera = BakingCamera.GetCamera(particle.canvas);
-            var root = particle.transform;
-            var rootMatrix = Matrix4x4.Rotate(root.rotation).inverse
-                             * Matrix4x4.Scale(root.lossyScale).inverse;
-            var scale = particle.ignoreCanvasScaler
+            var particleScale = particle.ignoreCanvasScaler
                 ? Vector3.Scale(particle.canvas.rootCanvas.transform.localScale, particle.scale3D)
                 : particle.scale3D;
-            var scaleMatrix = Matrix4x4.Scale(scale);
-            // Cache position
-            var position = particle.transform.position;
-            var diff = position - particle.cachedPosition;
-            diff.x *= 1f - 1f / Mathf.Max(0.001f, scale.x);
-            diff.y *= 1f - 1f / Mathf.Max(0.001f, scale.y);
-            diff.z *= 1f - 1f / Mathf.Max(0.001f, scale.z);
-            particle.cachedPosition = position;
+            var scaleMatrix = Matrix4x4.Scale(particleScale);
             Profiler.EndSample();
 
             Profiler.BeginSample("[UIParticle] Bake Mesh > Prepare Container");
             var particles = particle.particles;
             var particleRenderers = particle.particleRenderers;
-            if (jobHandles.Length < particles.Count * 4 && jobHandles.IsCreated)
+            if (jobHandles.Length < particles.Count * 6 && jobHandles.IsCreated)
             {
                 jobHandles.Dispose();
                 jobHandles = default;
             }
             if (!jobHandles.IsCreated)
             {
-                jobHandles = new NativeArray<JobHandle>(particles.Count * 4, Allocator.Persistent);
+                jobHandles = new NativeArray<JobHandle>(particles.Count * 6, Allocator.Persistent);
             }
             int particleTotal = 0;
             int vertexTotal = 0;
@@ -376,7 +424,7 @@ namespace Coffee.UIExtensions
                 var psInstanceID = ps.GetInstanceID();
                 //In editor, we will update the native data per time, otherwise only at the first time
 #if UNITY_EDITOR
-                var psNative = new ParticleSystemNative();
+                var psNative = particleSystemNatives.ContainsKey(psInstanceID) ? particleSystemNatives[psInstanceID] : new ParticleSystemNative();
                 psNative.CopyFrom(ps, r);
                 particleSystemNatives[psInstanceID] = psNative;
 #else
@@ -446,24 +494,22 @@ namespace Coffee.UIExtensions
             Profiler.EndSample();
 
             Profiler.BeginSample("[UIParticle] Bake Mesh > Particle Job");
-            int particleIndex = 0;
+            particleTotal = 0;
             for (int i = 0; i < particles.Count; ++i)
             {
                 var ps = particles[i];
                 var r = particleRenderers[i];
-                if (!CanBakeMesh(r) || !CanBakeMeshPerformant(r)) continue;
-                var slice = meshJob.particles.GetSubArray(particleIndex, ps.particleCount);
-                ps.GetParticles(slice, ps.particleCount, 0);
-                particleIndex += ps.particleCount;
+                if (!CanBakeMeshPerformant(r) || !CanBakeMesh(r)) continue;
+                var slice = meshJob.particles.GetSubArray(particleTotal, ps.particleCount);
+                ps.GetParticles(slice);
+                particleTotal += ps.particleCount;
             }
             vertexTotal = 0;
             indexTotal = 0;
-            particleIndex = 0;
-            meshJob.colorSpace = QualitySettings.activeColorSpace;
+            particleTotal = 0;
             meshJob.scaleMatrix = scaleMatrix;
-            transformJob.colorSpace = QualitySettings.activeColorSpace;
             transformJob.vertices = meshJob.vertices;
-            transformJob.colors = meshJob.colors;
+            colorSpaceJob.colors = meshJob.colors;
             indexJob.indices = meshJob.indices;
             var tempMesh = MeshHelper.GetTemporaryMesh();
             for (int i = 0; i < particles.Count; ++i)
@@ -471,102 +517,63 @@ namespace Coffee.UIExtensions
                 var ps = particles[i];
                 var r = particleRenderers[i];
                 if (!CanBakeMesh(r)) continue;
-                // Extra world simulation.
-                if (ps.main.simulationSpace == ParticleSystemSimulationSpace.World && 0 < diff.sqrMagnitude)
-                {
-                    if (s_Particles.Length < ps.particleCount)
-                    {
-                        var size = Mathf.NextPowerOfTwo(ps.particleCount);
-                        s_Particles = new ParticleSystem.Particle[size];
-                    }
-                    ps.GetParticles(s_Particles);
-                    for (var j = 0; j < ps.particleCount; j++)
-                    {
-                        var p = s_Particles[j];
-                        p.position += diff;
-                        s_Particles[j] = p;
-                    }
-                    ps.SetParticles(s_Particles, ps.particleCount);
-                }
-                if (CanBakeMeshPerformant(r))
+                bool canBakeMeshPerformant = CanBakeMeshPerformant(r);
+                if (canBakeMeshPerformant)
                 {
                     var psInstanceID = ps.GetInstanceID();
-                    var transform = ps.transform;
-                    if (transform != root)
-                    {
-                        MeshJob.GetParticleMatrix(rootMatrix, root.localToWorldMatrix, root.position, transform.position, transform.rotation, transform.lossyScale, ps.main.scalingMode, ps.main.simulationSpace, out meshJob.matrix);
-                    }
-                    else
-                    {
-                        MeshJob.GetScaledMatrix(transform.rotation, transform.lossyScale, transform.worldToLocalMatrix, ps.main.customSimulationSpace != null, ps.main.simulationSpace,
-                            ps.main.customSimulationSpace != null ? ps.main.customSimulationSpace.position : Vector3.zero, out meshJob.matrix);
-                    }
-                    MeshJob.GetAlignMatrix(r.alignment, transform.rotation, camera.transform.rotation, out meshJob.alignMatrix);
                     int vertexCount = ps.particleCount * 4;
                     int indexCount = ps.particleCount * 6;
                     meshJob.particleSystemNative = particleSystemNatives[psInstanceID];
-                    meshJob.particleIndex = particleIndex;
+                    meshJob.particleIndex = particleTotal;
+                    meshJob.matrix = particle.Matrices[i];
+                    meshJob.alignMatrix = particle.AlignMatrices[i];
                     meshJob.vertexBase = vertexTotal;
                     meshJob.indexOffset = indexTotal;
-                    jobHandles[i * 4] = meshJob.Schedule(ps.particleCount, 64);
-                    particleIndex += ps.particleCount;
+                    jobHandles[i * 6] = meshJob.Schedule(ps.particleCount, 64);
+                    particleTotal += ps.particleCount;
                     vertexTotal += vertexCount;
                     indexTotal += indexCount;
                 }
-                if (!CanBakeMeshPerformant(r) || (ps.trails.enabled && r.trailMaterial != null))
+                bool bakeTrail = ps.trails.enabled && r.trailMaterial != null;
+                if (!canBakeMeshPerformant || bakeTrail)
                 {
-                    var matrix = rootMatrix;
-                    if (ps.transform != root)
-                    {
-                        if (ps.main.simulationSpace == ParticleSystemSimulationSpace.Local)
-                        {
-                            var relativePos = root.InverseTransformPoint(ps.transform.position);
-                            matrix = Matrix4x4.Translate(relativePos) * matrix;
-                        }
-                        else
-                        {
-                            matrix = matrix * Matrix4x4.Translate(-root.position);
-                        }
-                    }
-                    else
-                    {
-                        matrix = GetScaledMatrix(ps);
-                    }
-                    matrix = scaleMatrix * matrix;
-                    transformJob.matrix = matrix;
-                    if (!CanBakeMeshPerformant(r))
+                    transformJob.matrix = scaleMatrix * particle.Matrices[i];
+                    if (!canBakeMeshPerformant)
                     {
                         r.BakeMesh(tempMesh, camera, true);
                         CopyFromMesh(tempMesh, ref vertexTotal, ref indexTotal, out var vertexCount, out var indexCount);
                         bakedIndexMap[i * 2] = new KeyValuePair<int, int>(vertexTotal - vertexCount, indexCount);
                         transformJob.vertexBase = bakedIndexMap[i * 2].Key;
-                        jobHandles[i * 4] = transformJob.Schedule(vertexCount, 256);
+                        jobHandles[i * 6] = transformJob.Schedule(vertexCount, 512);
+                        if (QualitySettings.activeColorSpace == ColorSpace.Linear)
+                        {
+                            colorSpaceJob.vertexBase = transformJob.vertexBase;
+                            jobHandles[i * 6 + 4] = colorSpaceJob.Schedule(vertexCount, 512);
+                        }
                         indexJob.indexOffset = indexTotal - indexCount;
                         indexJob.vertexBase = bakedIndexMap[i * 2].Key;
-                        jobHandles[i * 4 + 1] = indexJob.Schedule(indexCount, 512);
+                        jobHandles[i * 6 + 1] = indexJob.Schedule(indexCount, 512);
                     }
-                    if (ps.trails.enabled && r.trailMaterial != null)
+                    if (bakeTrail)
                     {
                         CopyFromMesh(bakedTrailMeshesMap[i], ref vertexTotal, ref indexTotal, out var vertexCount, out var indexCount);
                         bakedIndexMap[i * 2 + 1] = new KeyValuePair<int, int>(vertexTotal - vertexCount, indexCount);
                         transformJob.vertexBase = bakedIndexMap[i * 2 + 1].Key;
-                        jobHandles[i * 4 + 2] = transformJob.Schedule(vertexCount, 256);
+                        jobHandles[i * 6 + 2] = transformJob.Schedule(vertexCount, 512);
+                        if (QualitySettings.activeColorSpace == ColorSpace.Linear)
+                        {
+                            colorSpaceJob.vertexBase = transformJob.vertexBase;
+                            jobHandles[i * 6 + 5] = colorSpaceJob.Schedule(vertexCount, 512);
+                        }
                         indexJob.indexOffset = indexTotal - indexCount;
                         indexJob.vertexBase = bakedIndexMap[i * 2 + 1].Key;
-                        jobHandles[i * 4 + 3] = indexJob.Schedule(indexCount, 512);
+                        jobHandles[i * 6 + 3] = indexJob.Schedule(indexCount, 512);
                         MeshHelper.DiscardTemporaryMesh(bakedTrailMeshesMap[i]);
                     }
                 }
             }
             JobHandle.CompleteAll(jobHandles);
             MeshHelper.DiscardTemporaryMesh(tempMesh);
-#if UNITY_EDITOR
-            foreach (var psNative in particleSystemNatives.Values)
-            {
-                psNative.Dispose();
-            }
-            particleSystemNatives.Clear();
-#endif
             Profiler.EndSample();
 
             Profiler.BeginSample("[UIParticle] Bake Mesh > Copy To Mesh");

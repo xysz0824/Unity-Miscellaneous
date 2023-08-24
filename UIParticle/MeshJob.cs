@@ -5,6 +5,7 @@ using Unity.Jobs;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using RandomNative = Unity.Mathematics.Random;
+using Unity.Mathematics;
 
 namespace Coffee.UIExtensions
 {
@@ -30,17 +31,13 @@ namespace Coffee.UIExtensions
             Array colorKeys = emptyGradientColorKeys;
             if (gradient != null)
             {
-                if (gradient.alphaKeys.Length > colorKeys.Length) colorKeys = gradient.alphaKeys;
+                if (gradient.alphaKeys.Length > gradient.colorKeys.Length) colorKeys = gradient.alphaKeys;
                 else colorKeys = gradient.colorKeys;
             }
             if (!keys.IsCreated || keys.Length != colorKeys.Length)
             {
                 if (keys.IsCreated) keys.Dispose();
-#if UNITY_EDITOR
-                keys = new NativeArray<GradientColorKey>(colorKeys.Length, Allocator.TempJob);
-#else
                 keys = new NativeArray<GradientColorKey>(colorKeys.Length, Allocator.Persistent);
-#endif
             }
             for (int i = 0; i < colorKeys.Length; ++i)
             {
@@ -130,11 +127,7 @@ namespace Coffee.UIExtensions
             if (!keys.IsCreated || keys.Length != keyFrames.Length)
             {
                 if (keys.IsCreated) keys.Dispose();
-#if UNITY_EDITOR
-                keys = new NativeArray<Keyframe>(keyFrames.Length, Allocator.TempJob);
-#else
-                    keys = new NativeArray<Keyframe>(keyFrames.Length, Allocator.Persistent);
-#endif
+                keys = new NativeArray<Keyframe>(keyFrames.Length, Allocator.Persistent);
             }
             keys.CopyFrom(keyFrames);
         }
@@ -419,8 +412,11 @@ namespace Coffee.UIExtensions
         public SizeOverLifeTime sizeOverLifeTime;
         public SizeBySpeed sizeBySpeed;
         public TextureSheetAnimation textureSheetAnimation;
+        public ParticleSystemRenderMode renderMode;
         public Vector3 flip;
         public Vector3 pivot;
+        public float speedScale;
+        public float lengthScale;
         public void CopyFrom(ParticleSystem particleSystem, ParticleSystemRenderer renderer)
         {
             colorOverLifeTime.CopyFrom(particleSystem.colorOverLifetime);
@@ -428,8 +424,11 @@ namespace Coffee.UIExtensions
             sizeOverLifeTime.CopyFrom(particleSystem.sizeOverLifetime);
             sizeBySpeed.CopyFrom(particleSystem.sizeBySpeed);
             textureSheetAnimation.CopyFrom(particleSystem.textureSheetAnimation);
+            renderMode = renderer.renderMode;
             flip = renderer.flip;
             pivot = renderer.pivot;
+            speedScale = renderer.velocityScale;
+            lengthScale = renderer.lengthScale;
         }
         public void Dispose()
         {
@@ -443,7 +442,6 @@ namespace Coffee.UIExtensions
     [BurstCompile]
     struct MeshJob : IJobParallelFor
     {
-        public ColorSpace colorSpace;
         public Matrix4x4 matrix;
         public Matrix4x4 alignMatrix;
         public Matrix4x4 scaleMatrix;
@@ -465,10 +463,18 @@ namespace Coffee.UIExtensions
         {
             int psIndex = particleIndex + i;
             Vector4 posCenter = new Vector4(particles[psIndex].position.x, particles[psIndex].position.y, particles[psIndex].position.z, 1);
-            Quaternion rotation = Quaternion.Euler(Vector3.Scale(new Vector3(1, 1, -1), particles[psIndex].rotation3D));
+            Quaternion rotation = new Quaternion();
+            if (particleSystemNative.renderMode == ParticleSystemRenderMode.Stretch)
+            {
+                rotation = Quaternion.FromToRotation(new Vector3(-1, 0, 0), particles[psIndex].totalVelocity);
+            }
+            else
+            {
+                rotation = Quaternion.Euler(Vector3.Scale(new Vector3(1, 1, -1), particles[psIndex].rotation3D));
+            }
             float timeSeconds = particles[psIndex].startLifetime - particles[psIndex].remainingLifetime;
             float timeNormalized = timeSeconds / particles[psIndex].startLifetime;
-            float speed = particles[psIndex].velocity.magnitude;
+            float speed = particles[psIndex].totalVelocity.magnitude;
             var rand = new RandomNative(particles[psIndex].randomSeed);
             Vector3 size = particles[psIndex].startSize3D;
             if (particleSystemNative.sizeOverLifeTime.enabled)
@@ -479,10 +485,26 @@ namespace Coffee.UIExtensions
             {
                 size = Vector3.Scale(size, particleSystemNative.sizeBySpeed.Evaluate(speed, ref rand));
             }
-            Vector4 positionLB = rotation * Vector3.Scale(size, new Vector3(-0.5f, -0.5f, 0) + particleSystemNative.pivot);
-            Vector4 positionLT = rotation * Vector3.Scale(size, new Vector3(-0.5f, 0.5f, 0) + particleSystemNative.pivot);
-            Vector4 positionRT = rotation * Vector3.Scale(size, new Vector3(0.5f, 0.5f, 0) + particleSystemNative.pivot);
-            Vector4 positionRB = rotation * Vector3.Scale(size, new Vector3(0.5f, -0.5f, 0) + particleSystemNative.pivot);
+            Vector3 positionLB = new Vector3(-0.5f, -0.5f, 0);
+            Vector3 positionLT = new Vector3(-0.5f, 0.5f, 0);
+            Vector3 positionRT = new Vector3(0.5f, 0.5f, 0);
+            Vector3 positionRB = new Vector3(0.5f, -0.5f, 0);
+            if (particleSystemNative.renderMode == ParticleSystemRenderMode.Stretch)
+            {
+                var temp = size.x;
+                size.x = size.y;
+                size.y = temp;
+                size.x *= particleSystemNative.lengthScale;
+                size.x += speed * particleSystemNative.speedScale;
+                positionLB.x += 0.5f;
+                positionLT.x += 0.5f;
+                positionRT.x += 0.5f;
+                positionRB.x += 0.5f;
+            }
+            positionLB = rotation * Vector3.Scale(size, positionLB + particleSystemNative.pivot);
+            positionLT = rotation * Vector3.Scale(size, positionLT + particleSystemNative.pivot);
+            positionRT = rotation * Vector3.Scale(size, positionRT + particleSystemNative.pivot);
+            positionRB = rotation * Vector3.Scale(size, positionRB + particleSystemNative.pivot);
             int vertexIndex = vertexBase + i * 4;
             var finalMatrix = scaleMatrix * matrix;
             vertices[vertexIndex] = finalMatrix * posCenter + finalMatrix * alignMatrix * positionLB;
@@ -521,80 +543,31 @@ namespace Coffee.UIExtensions
             indices[index + 4] = indices[index] + 3;
             indices[index + 5] = indices[index];
         }
-        [BurstCompile]
-        public static void GetParticleMatrix(in Matrix4x4 rootMatrix, in Matrix4x4 rootTrans, in Vector3 rootPosition, in Vector3 position, in Quaternion rotation, in Vector3 scale, in ParticleSystemScalingMode scalingMode,
-            in ParticleSystemSimulationSpace simulationSpace, out Matrix4x4 matrix)
-        {
-            matrix = rootMatrix * Matrix4x4.Rotate(rotation);
-            if (scalingMode == ParticleSystemScalingMode.Hierarchy) matrix *= Matrix4x4.Scale(scale);
-            if (simulationSpace == ParticleSystemSimulationSpace.Local)
-            {
-                var relativePos = rootTrans.inverse * new Vector4(position.x, position.y, position.z, 1);
-                matrix = Matrix4x4.Translate(relativePos) * matrix;
-            }
-            else
-            {
-                matrix *= Matrix4x4.Translate(-rootPosition);
-            }
-        }
-        [BurstCompile]
-        public static void GetScaledMatrix(in Quaternion rotation, in Vector3 lossyScale, in Matrix4x4 worldToLocal, bool customSimulationSpace, ParticleSystemSimulationSpace simulationSpace, in Vector3 simulationSpacePosition, out Matrix4x4 matrix)
-        {
-            if (simulationSpace == ParticleSystemSimulationSpace.Custom && !customSimulationSpace)
-                simulationSpace = ParticleSystemSimulationSpace.Local;
-
-            switch (simulationSpace)
-            {
-                case ParticleSystemSimulationSpace.Local:
-                    matrix = Matrix4x4.Rotate(rotation).inverse * Matrix4x4.Scale(lossyScale).inverse;
-                    break;
-                case ParticleSystemSimulationSpace.World:
-                    matrix = worldToLocal;
-                    break;
-                case ParticleSystemSimulationSpace.Custom:
-                    // #78: Support custom simulation space.
-                    matrix = worldToLocal * Matrix4x4.Translate(simulationSpacePosition);
-                    break;
-                default:
-                    matrix = Matrix4x4.identity;
-                    break;
-            }
-        }
-        [BurstCompile]
-        public static void GetAlignMatrix(ParticleSystemRenderSpace renderSpace, in Quaternion rotation, in Quaternion cameraRotation, out Matrix4x4 matrix)
-        {
-            switch (renderSpace)
-            {
-                case ParticleSystemRenderSpace.View:
-                    matrix = Matrix4x4.Rotate(rotation).inverse * Matrix4x4.Rotate(cameraRotation);
-                    break;
-                case ParticleSystemRenderSpace.World:
-                    matrix = Matrix4x4.Rotate(rotation).inverse;
-                    break;
-                default:
-                    matrix = Matrix4x4.identity;
-                    break;
-            }
-        }
     }
     [BurstCompile]
     struct TransformJob : IJobParallelFor
     {
-        public ColorSpace colorSpace;
         public Matrix4x4 matrix;
         [NativeDisableContainerSafetyRestriction]
         public NativeArray<Vector3> vertices;
         public int vertexBase;
-        [NativeDisableContainerSafetyRestriction]
-        public NativeArray<Color> colors;
         public void Execute(int i)
         {
             int vertexIndex = vertexBase + i;
-            Vector4 pos = vertices[vertexIndex];
-            pos.w = 1;
-            pos = matrix * pos;
-            vertices[vertexIndex] = new Vector3(pos.x, pos.y, pos.z);
-            if (colorSpace == ColorSpace.Linear) colors[vertexIndex] = colors[vertexIndex].gamma;
+            vertices[vertexIndex] = matrix * new Vector4(vertices[vertexIndex].x, vertices[vertexIndex].y, vertices[vertexIndex].z, 1);
+        }
+    }
+    [BurstCompile]
+    struct ColorSpaceJob : IJobParallelFor
+    {
+        [NativeDisableContainerSafetyRestriction]
+        public NativeArray<Color> colors;
+        public int vertexBase;
+        public void Execute(int i)
+        {
+            int vertexIndex = vertexBase + i;
+            float3 sRGB = math.pow(new float3(colors[vertexIndex].r, colors[vertexIndex].g, colors[vertexIndex].b), 1.0f / 2.2f);
+            colors[vertexIndex] = new Vector4(sRGB.x, sRGB.y, sRGB.z, colors[vertexIndex].a);
         }
     }
     [BurstCompile]
