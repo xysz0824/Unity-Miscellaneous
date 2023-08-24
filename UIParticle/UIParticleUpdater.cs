@@ -386,7 +386,7 @@ namespace Coffee.UIExtensions
         private static void BakeMeshPerformant(UIParticle particle)
         {
 #if !UNITY_EDITOR
-            if (particle.syncTransform)
+            if (!particle.boostByJobSystem || particle.particle.syncTransform)
 #endif
             {
                 particle.UpdateMatrix();

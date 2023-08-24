@@ -436,10 +436,11 @@ namespace Coffee.UIExtensions
         public List<Matrix4x4> AlignMatrices => m_alignMatrices;
         public void UpdateMatrix()
         {
-            if (!IsActive()) return;
+            var camera = BakingCamera.GetCamera(canvas);
+            if (!IsActive() || !camera) return;
             // Cache position
             var particlePosition = transform.position;
-            var particleScale = ignoreCanvasScaler
+            var particleScale = ignoreCanvasScaler && canvas!=null
                 ? Vector3.Scale(canvas.rootCanvas.transform.localScale, scale3D)
                 : scale3D;
             var diff = particlePosition - cachedPosition;
@@ -447,7 +448,6 @@ namespace Coffee.UIExtensions
             diff.y *= 1f - 1f / Mathf.Max(0.001f, particleScale.y);
             diff.z *= 1f - 1f / Mathf.Max(0.001f, particleScale.z);
             cachedPosition = particlePosition;
-            var camera = BakingCamera.GetCamera(canvas);
             var root = transform;
             var rootMatrix = Matrix4x4.Rotate(root.rotation).inverse * Matrix4x4.Scale(root.lossyScale).inverse;
             if (m_matrices.Count < particles.Count)
@@ -573,19 +573,19 @@ namespace Coffee.UIExtensions
         protected override void OnCanvasHierarchyChanged()
         {
             base.OnCanvasHierarchyChanged();
-            UpdateMatrix();
+            if (boostByJobSystem && !syncTransform) UpdateMatrix();
         }
 
         protected override void OnRectTransformDimensionsChange()
         {
             base.OnRectTransformDimensionsChange();
-            UpdateMatrix();
+            if (boostByJobSystem && !syncTransform) UpdateMatrix();
         }
 
         protected override void OnTransformParentChanged()
         {
             base.OnTransformParentChanged();
-            UpdateMatrix();
+            if (boostByJobSystem && !syncTransform) UpdateMatrix();
         }
 
         private void InitializeIfNeeded()
