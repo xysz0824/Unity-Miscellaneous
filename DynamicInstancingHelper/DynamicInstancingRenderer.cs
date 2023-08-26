@@ -144,7 +144,7 @@ public class DynamicInstancingRenderer : MonoBehaviour
                 int sortedIndex = 0;
                 for (int index = 0; index < visibleCount;)
                 {
-                    var renderCount = Mathf.Min(sortedTransforms[sortedIndex].Length, visibleCount);
+                    var renderCount = Mathf.Min(sortedTransforms[sortedIndex].Length, visibleCount - index);
                     Graphics.DrawMeshInstanced(mesh, 0, material, sortedTransforms[sortedIndex], renderCount, null, shadowCastingMode, receiveShadows, layer);
                     sortedIndex++;
                     index += renderCount;
