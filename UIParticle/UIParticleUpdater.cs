@@ -72,6 +72,12 @@ namespace Coffee.UIExtensions
 #if UNITY_EDITOR
         private static void DestroyNativeContainer(UnityEditor.PlayModeStateChange state)
         {
+            DestroyNativeContainer();
+        }
+        [UnityEditor.Callbacks.DidReloadScripts]
+        private static void DestroyNativeContainer()
+        {
+            s_ActiveParticles.Clear();
             if (particleSystemNatives != null)
             {
                 var values = particleSystemNatives.Values;
@@ -126,10 +132,14 @@ namespace Coffee.UIExtensions
 
         static bool HasDisabledCanvas(Transform trans)
         {
+#if !UNITY_EDITOR   //For avoiding runtime GC, we don't check this in editor
             if (trans == null) return false;
             var canvas = trans.GetComponent<Canvas>();
             if (canvas != null && !canvas.enabled) return true;
             return HasDisabledCanvas(trans.parent);
+#else
+            return false;
+#endif
         }
 
         private static void Refresh(UIParticle particle)
@@ -386,7 +396,7 @@ namespace Coffee.UIExtensions
         private static void BakeMeshPerformant(UIParticle particle)
         {
 #if !UNITY_EDITOR
-            if (!particle.boostByJobSystem || particle.particle.syncTransform)
+            if (!particle.boostByJobSystem || particle.syncTransform)
 #endif
             {
                 particle.UpdateMatrix();
@@ -424,9 +434,12 @@ namespace Coffee.UIExtensions
                 var psInstanceID = ps.GetInstanceID();
                 //In editor, we will update the native data per time, otherwise only at the first time
 #if UNITY_EDITOR
-                var psNative = particleSystemNatives.ContainsKey(psInstanceID) ? particleSystemNatives[psInstanceID] : new ParticleSystemNative();
-                psNative.CopyFrom(ps, r);
-                particleSystemNatives[psInstanceID] = psNative;
+                if (!particleSystemNatives.ContainsKey(psInstanceID) || !Application.isPlaying)
+                {
+                    var psNative = particleSystemNatives.ContainsKey(psInstanceID) ? particleSystemNatives[psInstanceID] : new ParticleSystemNative();
+                    psNative.CopyFrom(ps, r);
+                    particleSystemNatives[psInstanceID] = psNative;
+                }
 #else
                 if (!particleSystemNatives.ContainsKey(psInstanceID))
                 {

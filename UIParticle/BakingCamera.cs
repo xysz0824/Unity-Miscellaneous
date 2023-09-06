@@ -26,7 +26,7 @@ namespace Coffee.UIParticleExtensions
 
                 s_InstanceForPrefab = Create();
                 s_InstanceForPrefab.name += " (For Prefab Stage)";
-                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(s_InstanceForPrefab.gameObject, prefabStage.scene);
+                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(s_InstanceForPrefab.gameObject.transform.parent.gameObject, prefabStage.scene);
 
                 return s_InstanceForPrefab;
             }
@@ -53,7 +53,7 @@ namespace Coffee.UIParticleExtensions
 
         private static BakingCamera Create()
         {
-            var fatherGameObject = new GameObject("Father_" + typeof(BakingCamera).Name)
+            var fatherGameObject = new GameObject("Father_"+typeof(BakingCamera).Name)
             {
                 hideFlags = HideFlags.HideAndDontSave
             };
