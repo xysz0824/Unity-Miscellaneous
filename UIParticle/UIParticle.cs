@@ -42,6 +42,15 @@ namespace Coffee.UIExtensions
         [Tooltip("- Sync Transform")] [SerializeField]
         bool m_SyncTransform;
 
+        [Tooltip("Mesh Sharing ID")] [SerializeField]
+        int m_MeshSharingIDMin = -1;
+
+        [Tooltip("Mesh Sharing ID")] [SerializeField]
+        int m_MeshSharingIDMax = -1;
+
+        [Tooltip("Mesh Sharing Random")] [SerializeField]
+        bool m_MeshSharingRandom;
+
         [Tooltip("Particles")] [SerializeField]
         private List<ParticleSystem> m_Particles = new List<ParticleSystem>();
         private List<ParticleSystemRenderer> m_ParticleRenderers = new List<ParticleSystemRenderer>();
@@ -53,6 +62,7 @@ namespace Coffee.UIExtensions
         private readonly List<Material> _maskMaterials = new List<Material>();
         private long _activeMeshIndices;
         private Vector3 _cachedPosition;
+        private int _meshSharingID;
         private static readonly List<Material> s_TempMaterials = new List<Material>(2);
         private static MaterialPropertyBlock s_Mpb;
 
@@ -84,11 +94,22 @@ namespace Coffee.UIExtensions
             get => m_BoostByJobSystem;
             set => m_BoostByJobSystem = value;
         }
-
+        
         public bool syncTransform
         {
             get => m_SyncTransform;
             set => m_SyncTransform = value;
+        }
+
+        public int meshSharingID
+        {
+            get => _meshSharingID;
+        }
+
+        public bool meshSharingRandom
+        {
+            get => m_MeshSharingRandom;
+            set => m_MeshSharingRandom = value;
         }
 
         /// <summary>
@@ -375,6 +396,7 @@ namespace Coffee.UIExtensions
         {
             _cachedPosition = transform.localPosition;
             _activeMeshIndices = 0;
+            _meshSharingID = Random.Range(m_MeshSharingIDMin, m_MeshSharingIDMax);
 
             UIParticleUpdater.Register(this);
             particles.Exec(p => 

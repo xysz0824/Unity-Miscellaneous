@@ -30,6 +30,9 @@ namespace Coffee.UIExtensions
         private SerializedProperty _spAnimatableProperties;
         private SerializedProperty _spBoostByJobSystem;
         private SerializedProperty _spSyncTransform;
+        private SerializedProperty _spMeshSharingIDMin;
+        private SerializedProperty _spMeshSharingIDMax;
+        private SerializedProperty _spMeshSharingRandom;
 
         private ReorderableList _ro;
         private bool _xyzMode;
@@ -59,6 +62,9 @@ namespace Coffee.UIExtensions
             _spAnimatableProperties = serializedObject.FindProperty("m_AnimatableProperties");
             _spBoostByJobSystem = serializedObject.FindProperty("m_BoostByJobSystem");
             _spSyncTransform = serializedObject.FindProperty("m_SyncTransform");
+            _spMeshSharingIDMin = serializedObject.FindProperty("m_MeshSharingIDMin");
+            _spMeshSharingIDMax = serializedObject.FindProperty("m_MeshSharingIDMax");
+            _spMeshSharingRandom = serializedObject.FindProperty("m_MeshSharingRandom");
 
             var sp = serializedObject.FindProperty("m_Particles");
             _ro = new ReorderableList(sp.serializedObject, sp, true, true, true, true);
@@ -167,6 +173,29 @@ namespace Coffee.UIExtensions
             if (_spBoostByJobSystem.boolValue)
             {
                 EditorGUILayout.PropertyField(_spSyncTransform);
+                if (!_spMeshSharingRandom.boolValue)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.PropertyField(_spMeshSharingIDMin, new GUIContent("Mesh Sharing ID"));
+                    _spMeshSharingIDMax.intValue = _spMeshSharingIDMin.intValue;
+                    if (GUILayout.Button("Random", GUILayout.Width(80)))
+                    {
+                        _spMeshSharingRandom.boolValue = true;
+                    }
+                    EditorGUILayout.EndHorizontal();
+                }
+                else
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    var range = EditorGUILayout.Vector2IntField("Mesh Sharing ID Range", new Vector2Int(_spMeshSharingIDMin.intValue, _spMeshSharingIDMax.intValue));
+                    _spMeshSharingIDMin.intValue = range.x;
+                    _spMeshSharingIDMax.intValue = range.y;
+                    if (GUILayout.Button("Fix", GUILayout.Width(80)))
+                    {
+                        _spMeshSharingRandom.boolValue = false;
+                    }
+                    EditorGUILayout.EndHorizontal();
+                }
             }
 
             // Target ParticleSystems.

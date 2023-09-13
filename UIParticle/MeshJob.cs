@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using Unity.Burst;
 using Unity.Jobs;
@@ -405,6 +406,159 @@ namespace Coffee.UIExtensions
             startFrame.Dispose();
         }
     }
+    public struct CustomData
+    {
+        public bool enabled;
+        public ParticleSystemCustomDataMode custom1Mode;
+        public int custom1ComponentCount;
+        public MinMaxCurveNative custom1VectorCurveX;
+        public MinMaxCurveNative custom1VectorCurveY;
+        public MinMaxCurveNative custom1VectorCurveZ;
+        public MinMaxCurveNative custom1VectorCurveW;
+        public MinMaxGradientNative custom1ColorGradient;
+        public ParticleSystemCustomDataMode custom2Mode;
+        public int custom2ComponentCount;
+        public MinMaxCurveNative custom2VectorCurveX;
+        public MinMaxCurveNative custom2VectorCurveY;
+        public MinMaxCurveNative custom2VectorCurveZ;
+        public MinMaxCurveNative custom2VectorCurveW;
+        public MinMaxGradientNative custom2ColorGradient;
+        public void CopyFrom(ParticleSystem.CustomDataModule module)
+        {
+            enabled = module.enabled;
+            custom1Mode = module.GetMode(ParticleSystemCustomData.Custom1);
+            custom1ComponentCount = custom1Mode == ParticleSystemCustomDataMode.Vector ? module.GetVectorComponentCount(ParticleSystemCustomData.Custom1) : 4;
+            if (custom1Mode == ParticleSystemCustomDataMode.Vector)
+            {
+                custom1VectorCurveX.CopyFrom(module.GetVector(ParticleSystemCustomData.Custom1, 0));
+                if (custom1ComponentCount >= 2) custom1VectorCurveY.CopyFrom(module.GetVector(ParticleSystemCustomData.Custom1, 1));
+                if (custom1ComponentCount >= 3) custom1VectorCurveZ.CopyFrom(module.GetVector(ParticleSystemCustomData.Custom1, 2));
+                if (custom1ComponentCount >= 4) custom1VectorCurveW.CopyFrom(module.GetVector(ParticleSystemCustomData.Custom1, 3));
+            }
+            else custom1ColorGradient.CopyFrom(module.GetColor(ParticleSystemCustomData.Custom1));
+            custom2Mode = module.GetMode(ParticleSystemCustomData.Custom2);
+            custom2ComponentCount = custom2Mode == ParticleSystemCustomDataMode.Vector ? module.GetVectorComponentCount(ParticleSystemCustomData.Custom2) : 4;
+            if (custom2Mode == ParticleSystemCustomDataMode.Vector)
+            {
+                custom2VectorCurveX.CopyFrom(module.GetVector(ParticleSystemCustomData.Custom2, 0));
+                if (custom2ComponentCount >= 2) custom2VectorCurveY.CopyFrom(module.GetVector(ParticleSystemCustomData.Custom2, 1));
+                if (custom2ComponentCount >= 3) custom2VectorCurveZ.CopyFrom(module.GetVector(ParticleSystemCustomData.Custom2, 2));
+                if (custom2ComponentCount >= 4) custom2VectorCurveW.CopyFrom(module.GetVector(ParticleSystemCustomData.Custom2, 3));
+            }
+            else custom2ColorGradient.CopyFrom(module.GetColor(ParticleSystemCustomData.Custom2));
+        }
+        public Vector4 GetCustom1(float time, ref RandomNative rand)
+        {
+            switch (custom1Mode)
+            {
+                case ParticleSystemCustomDataMode.Vector:
+                    float x = custom1VectorCurveX.Evaluate(time, ref rand);
+                    float y = custom1ComponentCount >= 2 ? custom1VectorCurveY.Evaluate(time, ref rand) : 0;
+                    float z = custom1ComponentCount >= 3 ? custom1VectorCurveZ.Evaluate(time, ref rand) : 0;
+                    float w = custom1ComponentCount >= 4 ? custom1VectorCurveW.Evaluate(time, ref rand) : 0;
+                    return new Vector4(x, y, z, w);
+                case ParticleSystemCustomDataMode.Color:
+                    return custom1ColorGradient.Evaluate(time, ref rand);
+                default:
+                    return new Vector4();
+            }
+        }
+        public Vector4 GetCustom2(float time, ref RandomNative rand)
+        {
+            switch (custom2Mode)
+            {
+                case ParticleSystemCustomDataMode.Vector:
+                    float x = custom2VectorCurveX.Evaluate(time, ref rand);
+                    float y = custom2ComponentCount >= 2 ? custom2VectorCurveY.Evaluate(time, ref rand) : 0;
+                    float z = custom2ComponentCount >= 3 ? custom2VectorCurveZ.Evaluate(time, ref rand) : 0;
+                    float w = custom2ComponentCount >= 4 ? custom2VectorCurveW.Evaluate(time, ref rand) : 0;
+                    return new Vector4(x, y, z, w);
+                case ParticleSystemCustomDataMode.Color:
+                    return custom2ColorGradient.Evaluate(time, ref rand);
+                default:
+                    return new Vector4();
+            }
+        }
+        public void Dispose()
+        {
+            custom1VectorCurveX.Dispose();
+            custom1VectorCurveY.Dispose();
+            custom1VectorCurveZ.Dispose();
+            custom1VectorCurveW.Dispose();
+            custom1ColorGradient.Dispose();
+            custom2VectorCurveX.Dispose();
+            custom2VectorCurveY.Dispose();
+            custom2VectorCurveZ.Dispose();
+            custom2VectorCurveW.Dispose();
+            custom2ColorGradient.Dispose();
+        }
+    }
+    public struct CustomVertexStreams
+    {
+        static int[] streamLengthSheet = { 0, 0, 0, 0, 2, 2, 2, 2, 1, 1, 3, 1, 1, 2, 3, 1, 3, 1, 3, 3, 1, 1, 1, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 3, 1 };
+        static List<ParticleSystemVertexStream> activeVertexStreams = new List<ParticleSystemVertexStream>();
+        public bool custom1Active;
+        public int custom1ChannelStart;
+        public int custom1ChannelEnd;
+        public bool custom2Active;
+        public int custom2ChannelStart;
+        public int custom2ChannelEnd;
+        public void CopyFrom(ParticleSystemRenderer renderer)
+        {
+            renderer.GetActiveVertexStreams(activeVertexStreams);
+            int offset = 0;
+            custom1Active = custom2Active = false;
+            for (int i = 0;i < activeVertexStreams.Count; ++i)
+            {
+                var length = streamLengthSheet[(int)activeVertexStreams[i]];
+                if (activeVertexStreams[i] >= ParticleSystemVertexStream.Custom1X && activeVertexStreams[i] <= ParticleSystemVertexStream.Custom1XYZW)
+                {
+                    custom1Active = true;
+                    custom1ChannelStart = offset;
+                    custom1ChannelEnd = offset + length;
+                }
+                if (activeVertexStreams[i] >= ParticleSystemVertexStream.Custom2X && activeVertexStreams[i] <= ParticleSystemVertexStream.Custom2XYZW)
+                {
+                    custom2Active = true;
+                    custom2ChannelStart = offset;
+                    custom2ChannelEnd = offset + length;
+                }
+                offset += length;
+            }
+        }
+        public Vector4 GetTexcoord(Vector4 v, int texcoordStart, ref Vector4 custom1, ref Vector4 custom2)
+        {
+            if (custom1Active)
+            {
+                int start = Mathf.Clamp(custom1ChannelStart - texcoordStart, 0, 4);
+                int end = Mathf.Min(custom1ChannelEnd - texcoordStart, 4);
+                int offset = Mathf.Max(texcoordStart - custom1ChannelStart, 0);
+                for (int i = start; i < end; ++i)
+                {
+                    v[i] = custom1[i - start + offset];
+                }
+            }
+            if (custom2Active)
+            {
+                int start = Mathf.Clamp(custom2ChannelStart - texcoordStart, 0, 4);
+                int end = Mathf.Min(custom2ChannelEnd - texcoordStart, 4);
+                int offset = Mathf.Max(texcoordStart - custom2ChannelStart, 0);
+                for (int i = start; i < end; ++i)
+                {
+                    v[i] = custom2[i - start + offset];
+                }
+            }
+            return v;
+        }
+        public Vector4 GetTexcoord0(Vector4 v, ref Vector4 custom1, ref Vector4 custom2)
+        {
+            return GetTexcoord(v, 0, ref custom1, ref custom2);
+        }
+        public Vector4 GetTexcoord1(ref Vector4 custom1, ref Vector4 custom2)
+        {
+            return GetTexcoord(new Vector4(), 4, ref custom1, ref custom2);
+        }
+    }
     public struct ParticleSystemNative
     {
         public ColorOverLifeTime colorOverLifeTime;
@@ -412,11 +566,13 @@ namespace Coffee.UIExtensions
         public SizeOverLifeTime sizeOverLifeTime;
         public SizeBySpeed sizeBySpeed;
         public TextureSheetAnimation textureSheetAnimation;
+        public CustomData customData;
         public ParticleSystemRenderMode renderMode;
         public Vector3 flip;
         public Vector3 pivot;
         public float speedScale;
         public float lengthScale;
+        public CustomVertexStreams customVertexStreams;
         public void CopyFrom(ParticleSystem particleSystem, ParticleSystemRenderer renderer)
         {
             colorOverLifeTime.CopyFrom(particleSystem.colorOverLifetime);
@@ -424,11 +580,14 @@ namespace Coffee.UIExtensions
             sizeOverLifeTime.CopyFrom(particleSystem.sizeOverLifetime);
             sizeBySpeed.CopyFrom(particleSystem.sizeBySpeed);
             textureSheetAnimation.CopyFrom(particleSystem.textureSheetAnimation);
+            customData.CopyFrom(particleSystem.customData);
+
             renderMode = renderer.renderMode;
             flip = renderer.flip;
             pivot = renderer.pivot;
             speedScale = renderer.velocityScale;
             lengthScale = renderer.lengthScale;
+            customVertexStreams.CopyFrom(renderer);
         }
         public void Dispose()
         {
@@ -455,7 +614,9 @@ namespace Coffee.UIExtensions
         [NativeDisableContainerSafetyRestriction]
         public NativeArray<Color> colors;
         [NativeDisableContainerSafetyRestriction]
-        public NativeArray<Vector2> uvs;
+        public NativeArray<Vector4> texcoord0;
+        [NativeDisableContainerSafetyRestriction]
+        public NativeArray<Vector4> texcoord1;
         [NativeDisableContainerSafetyRestriction]
         public NativeArray<int> indices;
         public int indexOffset;
@@ -507,10 +668,10 @@ namespace Coffee.UIExtensions
             positionRB = rotation * Vector3.Scale(size, positionRB + particleSystemNative.pivot);
             int vertexIndex = vertexBase + i * 4;
             var finalMatrix = scaleMatrix * matrix;
-            vertices[vertexIndex] = finalMatrix * posCenter + finalMatrix * alignMatrix * positionLB;
-            vertices[vertexIndex + 1] = finalMatrix * posCenter + finalMatrix * alignMatrix * positionLT;
-            vertices[vertexIndex + 2] = finalMatrix * posCenter + finalMatrix * alignMatrix * positionRT;
-            vertices[vertexIndex + 3] = finalMatrix * posCenter + finalMatrix * alignMatrix * positionRB;
+            vertices[vertexIndex] = finalMatrix * (posCenter + alignMatrix * positionLB);
+            vertices[vertexIndex + 1] = finalMatrix * (posCenter + alignMatrix * positionLT);
+            vertices[vertexIndex + 2] = finalMatrix * (posCenter + alignMatrix * positionRT);
+            vertices[vertexIndex + 3] = finalMatrix * (posCenter + alignMatrix * positionRB);
             Color color = particles[psIndex].startColor;
             if (particleSystemNative.colorOverLifeTime.enabled)
             {
@@ -531,10 +692,23 @@ namespace Coffee.UIExtensions
             }
             int u = particleSystemNative.flip.x == 1f ? 1 : 0;
             int v = particleSystemNative.flip.y == 1f ? 1 : 0;
-            uvs[vertexIndex] = Vector2.Scale(uvScale, new Vector2(u, v)) + uvOffset;
-            uvs[vertexIndex + 1] = Vector2.Scale(uvScale, new Vector2(u, 1 - v)) + uvOffset;
-            uvs[vertexIndex + 2] = Vector2.Scale(uvScale, new Vector2(1 - u, 1 - v)) + uvOffset;
-            uvs[vertexIndex + 3] = Vector2.Scale(uvScale, new Vector2(1 - u, v)) + uvOffset;
+            texcoord0[vertexIndex] = Vector2.Scale(uvScale, new Vector2(u, v)) + uvOffset;
+            texcoord0[vertexIndex + 1] = Vector2.Scale(uvScale, new Vector2(u, 1 - v)) + uvOffset;
+            texcoord0[vertexIndex + 2] = Vector2.Scale(uvScale, new Vector2(1 - u, 1 - v)) + uvOffset;
+            texcoord0[vertexIndex + 3] = Vector2.Scale(uvScale, new Vector2(1 - u, v)) + uvOffset;
+            var custom1 = particleSystemNative.customData.enabled ? particleSystemNative.customData.GetCustom1(timeNormalized, ref rand) : new Vector4();
+            var custom2 = particleSystemNative.customData.enabled ? particleSystemNative.customData.GetCustom2(timeNormalized, ref rand) : new Vector4();
+            if (particleSystemNative.customVertexStreams.custom1Active || particleSystemNative.customVertexStreams.custom2Active)
+            {
+                texcoord0[vertexIndex] = particleSystemNative.customVertexStreams.GetTexcoord0(texcoord0[vertexIndex], ref custom1, ref custom2);
+                texcoord0[vertexIndex + 1] = particleSystemNative.customVertexStreams.GetTexcoord0(texcoord0[vertexIndex + 1], ref custom1, ref custom2);
+                texcoord0[vertexIndex + 2] = particleSystemNative.customVertexStreams.GetTexcoord0(texcoord0[vertexIndex + 2], ref custom1, ref custom2);
+                texcoord0[vertexIndex + 3] = particleSystemNative.customVertexStreams.GetTexcoord0(texcoord0[vertexIndex + 3], ref custom1, ref custom2);
+                texcoord1[vertexIndex] = particleSystemNative.customVertexStreams.GetTexcoord1(ref custom1, ref custom2);
+                texcoord1[vertexIndex + 1] = texcoord1[vertexIndex];
+                texcoord1[vertexIndex + 2] = texcoord1[vertexIndex];
+                texcoord1[vertexIndex + 3] = texcoord1[vertexIndex];
+            }
             int index = indexOffset + i * 6;
             indices[index] = vertexIndex;
             indices[index + 1] = indices[index] + 1;
