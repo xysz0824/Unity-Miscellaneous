@@ -596,6 +596,7 @@ namespace Coffee.UIExtensions
             sizeOverLifeTime.Dispose();
             sizeBySpeed.Dispose();
             textureSheetAnimation.Dispose();
+            customData.Dispose();
         }
     }
     [BurstCompile]

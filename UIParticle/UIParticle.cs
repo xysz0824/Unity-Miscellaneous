@@ -63,6 +63,7 @@ namespace Coffee.UIExtensions
         private long _activeMeshIndices;
         private Vector3 _cachedPosition;
         private int _meshSharingID;
+        private bool _refreshed;
         private static readonly List<Material> s_TempMaterials = new List<Material>(2);
         private static MaterialPropertyBlock s_Mpb;
 
@@ -110,6 +111,12 @@ namespace Coffee.UIExtensions
         {
             get => m_MeshSharingRandom;
             set => m_MeshSharingRandom = value;
+        }
+
+        public bool refreshed
+        {
+            get => _refreshed;
+            set => _refreshed = value;
         }
 
         /// <summary>
@@ -397,6 +404,7 @@ namespace Coffee.UIExtensions
             _cachedPosition = transform.localPosition;
             _activeMeshIndices = 0;
             _meshSharingID = Random.Range(m_MeshSharingIDMin, m_MeshSharingIDMax);
+            _refreshed = false;
 
             UIParticleUpdater.Register(this);
             particles.Exec(p => 

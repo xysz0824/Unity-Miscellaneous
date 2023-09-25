@@ -70,7 +70,8 @@ namespace Coffee.UIExtensions
 #if UNITY_EDITOR
         private static void DestroyNativeContainer(UnityEditor.PlayModeStateChange state)
         {
-            DestroyNativeContainer();
+            if (state == UnityEditor.PlayModeStateChange.ExitingPlayMode)
+                DestroyNativeContainer();
         }
         [UnityEditor.Callbacks.DidReloadScripts]
         private static void DestroyNativeContainer()
@@ -150,6 +151,7 @@ namespace Coffee.UIExtensions
 
         private static void Refresh(UIParticle particle, UIParticle last)
         {
+            particle.refreshed = false;
             if (!particle || !particle.canvas || !particle.canvasRenderer || HasDisabledCanvas(particle.transform)) return;
 
             // #102: Do not bake particle system to mesh when the alpha is zero.
@@ -175,6 +177,8 @@ namespace Coffee.UIExtensions
             Profiler.BeginSample("[UIParticle] Update Animatable Material Properties");
             particle.UpdateMaterialProperties();
             Profiler.EndSample();
+
+            particle.refreshed = true;
         }
 
         private static void ModifyScale(UIParticle particle)
@@ -426,7 +430,7 @@ namespace Coffee.UIExtensions
             int vertexTotal = 0;
             int indexTotal = 0;
             int trailTotal = 0;
-            bool meshSharing = last != null && particle.meshSharingID > 0 && last.meshSharingID == particle.meshSharingID;
+            bool meshSharing = last != null && last.boostByJobSystem && last.refreshed && particle.meshSharingID > 0 && last.meshSharingID == particle.meshSharingID;
             if (!meshSharing)
             {
                 Profiler.BeginSample("[UIParticle] Bake Mesh > Prepare Container");
