@@ -14,4 +14,5 @@ public class LowEndRenderingAdaptorConfig : ScriptableObject
     public Texture2D[] ignorePackTextures;
     public string propertyMappingRule;
     public string keywordMappingRule;
+    public string[] excludeProperties;
 }

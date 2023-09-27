@@ -76,6 +76,8 @@ namespace Coffee.UIExtensions
         [UnityEditor.Callbacks.DidReloadScripts]
         private static void DestroyNativeContainer()
         {
+            Canvas.willRenderCanvases -= Refresh;
+            UnityEditor.EditorApplication.playModeStateChanged -= DestroyNativeContainer;
             s_ActiveParticles.Clear();
             if (particleSystemNatives != null)
             {
@@ -351,7 +353,7 @@ namespace Coffee.UIExtensions
 
         private static bool CanBakeMesh(ParticleSystemRenderer renderer)
         {
-            if (renderer == null) return false;
+            if (renderer == null || !renderer.gameObject.activeInHierarchy) return false;
             // #69: Editor crashes when mesh is set to null when `ParticleSystem.RenderMode = Mesh`
             if (renderer.renderMode == ParticleSystemRenderMode.Mesh && renderer.mesh == null) return false;
 
@@ -410,6 +412,19 @@ namespace Coffee.UIExtensions
 
         private static void BakeMeshPerformant(UIParticle particle, UIParticle last)
         {
+            var particles = particle.particles;
+            var particleRenderers = particle.particleRenderers;
+            int activeParticles = 0;
+            for (int i = 0; i < particles.Count; ++i)
+            {
+                var ps = particles[i];
+                if (!ps || !ps.gameObject.activeInHierarchy || ps.particleCount == 0)
+                {
+                    continue;
+                }
+                activeParticles++;
+            }
+            if (activeParticles == 0) return;
 #if !UNITY_EDITOR
             if (!particle.boostByJobSystem || particle.syncTransform)
 #endif
@@ -425,8 +440,6 @@ namespace Coffee.UIExtensions
             var scaleMatrix = Matrix4x4.Scale(particleScale);
             Profiler.EndSample();
 
-            var particles = particle.particles;
-            var particleRenderers = particle.particleRenderers;
             int vertexTotal = 0;
             int indexTotal = 0;
             int trailTotal = 0;

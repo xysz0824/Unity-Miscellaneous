@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -5,6 +6,8 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class LowEndRenderingAdaptor : MonoBehaviour
 {
+    [NonSerialized]
+    public int index = -1;
     void OnEnable()
     {
         if (LowEndRenderingManager.Instance != null)

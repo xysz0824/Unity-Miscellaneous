@@ -31,13 +31,15 @@ public class LowEndRenderingAdaptorConfigEditor : Editor
         EditorGUILayout.PropertyField(ignoreMaterials);
         var ignorePackTextures = serializedObject.FindProperty(nameof(config.ignorePackTextures));
         EditorGUILayout.PropertyField(ignorePackTextures);
+        var excludeProperties = serializedObject.FindProperty(nameof(config.excludeProperties));
+        EditorGUILayout.PropertyField(excludeProperties);
         EditorGUILayout.LabelField("Property Mapping Rule", Style.BoldLabel);
-        scrollPos = EditorGUILayout.BeginScrollView(scrollPos, GUILayout.Height(200));
+        scrollPos = EditorGUILayout.BeginScrollView(scrollPos, GUILayout.Height(150));
         var propertyMappingRule = serializedObject.FindProperty(nameof(config.propertyMappingRule));
         propertyMappingRule.stringValue = EditorGUILayout.TextArea(propertyMappingRule.stringValue, GUILayout.ExpandHeight(true));
         EditorGUILayout.EndScrollView();
         EditorGUILayout.LabelField("Keyword Mapping Rule", Style.BoldLabel);
-        scrollPos = EditorGUILayout.BeginScrollView(scrollPos, GUILayout.Height(200));
+        scrollPos = EditorGUILayout.BeginScrollView(scrollPos, GUILayout.Height(150));
         var keywordMappingRule = serializedObject.FindProperty(nameof(config.keywordMappingRule));
         keywordMappingRule.stringValue = EditorGUILayout.TextArea(keywordMappingRule.stringValue, GUILayout.ExpandHeight(true));
         EditorGUILayout.EndScrollView();

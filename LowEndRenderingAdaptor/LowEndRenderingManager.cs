@@ -1,12 +1,13 @@
-using System.Collections;
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 
 public class LowEndRenderingManager : MonoBehaviour
 {
     static LowEndRenderingManager instance;
     public static LowEndRenderingManager Instance => instance;
-    HashSet<LowEndRenderingAdaptor> adaptors = new HashSet<LowEndRenderingAdaptor>();
+    LowEndRenderingAdaptor[] adaptors = new LowEndRenderingAdaptor[5000];
+    int count = 0;
     int lastLod;
     public int lodThreshold = 100;
     void Awake()
@@ -20,16 +21,16 @@ public class LowEndRenderingManager : MonoBehaviour
             lastLod = Shader.globalMaximumLOD;
             if (lastLod <= lodThreshold)
             {
-                foreach (var adaptor in adaptors)
+                for (int i = 0; i < count; ++i)
                 {
-                    adaptor.Active();
+                    adaptors[i].Active();
                 }
             }
             else
             {
-                foreach (var adaptor in adaptors)
+                for (int i = 0; i < count; ++i)
                 {
-                    adaptor.Disactive();
+                    adaptors[i].Disactive();
                 }
             }
         }
@@ -37,12 +38,30 @@ public class LowEndRenderingManager : MonoBehaviour
     public void Join(LowEndRenderingAdaptor adaptor)
     {
         if (!adaptor.IsValid()) return;
-        adaptors.Add(adaptor);
-        if (enabled && Shader.globalMaximumLOD <= lodThreshold) adaptor.Active();
+        adaptor.index = count;
+        adaptors[count++] = adaptor;
+        if (count >= adaptors.Length)
+        {
+            Array.Resize(ref adaptors, adaptors.Length * 2);
+        }
+        if (enabled)
+        {
+            if (Shader.globalMaximumLOD <= lodThreshold)
+            {
+                adaptor.Active();
+            }
+            else
+            {
+                adaptor.Disactive();
+            }
+        }
     }
     public void Quit(LowEndRenderingAdaptor adaptor)
     {
-        adaptors.Remove(adaptor);
-        adaptor.Disactive();
+        if (adaptor == null || adaptor.index < 0 || adaptor.index >= count) return;
+        adaptors[adaptor.index] = adaptors[count - 1];
+        adaptors[count - 1] = null;
+        adaptor.index = -1;
+        count--;
     }
 }

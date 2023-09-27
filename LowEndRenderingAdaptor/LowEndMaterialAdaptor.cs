@@ -5,6 +5,7 @@ using UnityEngine;
 [RequireComponent(typeof(Renderer))]
 public class LowEndMaterialAdaptor : LowEndRenderingAdaptor
 {
+    Renderer thisRenderer;
     public Material originMaterial;
     public Material lowEndMaterial;
     public override bool IsValid()
@@ -13,18 +14,17 @@ public class LowEndMaterialAdaptor : LowEndRenderingAdaptor
     }
     public override void Active()
     {
-        var renderer = GetComponent<Renderer>();
-        if (renderer != null)
+        if (thisRenderer == null) thisRenderer = GetComponent<Renderer>();
+        if (thisRenderer != null && thisRenderer.sharedMaterial != lowEndMaterial)
         {
-            renderer.sharedMaterial = lowEndMaterial;
+            thisRenderer.sharedMaterial = lowEndMaterial;
         }
     }
     public override void Disactive()
     {
-        var renderer = GetComponent<Renderer>();
-        if (renderer != null)
+        if (thisRenderer != null && thisRenderer.sharedMaterial != originMaterial)
         {
-            renderer.sharedMaterial = originMaterial;
+            thisRenderer.sharedMaterial = originMaterial;
         }
     }
 }

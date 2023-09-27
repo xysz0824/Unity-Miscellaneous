@@ -22,7 +22,8 @@ public class LowEndPipelineSwitcher : MonoBehaviour
 
     void Switch(Camera camera)
     {
-        var cameraData = camera?.GetUniversalAdditionalCameraData();
+        if (camera == null || camera.gameObject == null) return;
+        var cameraData = camera.GetUniversalAdditionalCameraData();
         if (cameraData != null)
         {
             var currentIndex = (int)m_RendererIndex.GetValue(cameraData);
@@ -64,10 +65,15 @@ public class LowEndPipelineSwitcher : MonoBehaviour
         }
         int count = Camera.GetAllCameras(allCameras);
         if (count <= 1) return;
-        if (lastCamera != allCameras[1])
+        for (int i = 1; i < count; ++i)
         {
-            lastCamera = allCameras[1];
-            Switch(lastCamera);
+            if (allCameras[i].orthographic) continue;
+            if (lastCamera != allCameras[i])
+            {
+                lastCamera = allCameras[i];
+                Switch(lastCamera);
+            }
+            break;
         }
     }
 }

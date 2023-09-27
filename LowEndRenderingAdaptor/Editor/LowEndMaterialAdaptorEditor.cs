@@ -59,6 +59,7 @@ public class LowEndMaterialAdaptorEditor : Editor
         EditorGUILayout.PropertyField(originMaterial);
         var lowEndMaterial = serializedObject.FindProperty(nameof(adaptor.lowEndMaterial));
         EditorGUILayout.PropertyField(lowEndMaterial);
+        serializedObject.ApplyModifiedProperties();
         var renderer = adaptor.gameObject.GetComponent<Renderer>();
         var material = renderer.sharedMaterial;
         if (material == null || adaptor.lowEndMaterial == null)
@@ -79,7 +80,6 @@ public class LowEndMaterialAdaptorEditor : Editor
         {
             renderer.sharedMaterial = adaptor.originMaterial;
         }
-        serializedObject.ApplyModifiedProperties();
     }
     static Texture GetMainTexture(string propertyMappingRule, Material material)
     {
@@ -115,6 +115,7 @@ public class LowEndMaterialAdaptorEditor : Editor
             if (propertyName == config.alphatestPropertyName) continue;
             if (neo.shader.FindPropertyIndex(propertyName) != -1)
             {
+                if (config.excludeProperties.Contains(propertyName)) continue;
                 var type = old.shader.GetPropertyType(i);
                 switch (type)
                 {
@@ -175,6 +176,7 @@ public class LowEndMaterialAdaptorEditor : Editor
                     var propertyName = old.shader.GetPropertyName(i);
                     if (IsMapping(pair.Key, propertyName) && old.shader.FindPropertyIndex(pair.Value) == -1)
                     {
+                        if (config.excludeProperties.Contains(propertyName) || config.excludeProperties.Contains(pair.Value)) continue;
                         var type = old.shader.GetPropertyType(i);
                         switch (type)
                         {
@@ -251,10 +253,14 @@ public class LowEndMaterialAdaptorEditor : Editor
             foreach (var child in children)
             {
                 if (!(child is MeshRenderer || child is SkinnedMeshRenderer)) continue;
-                if (child.sharedMaterial == null || child.sharedMaterial.shader == null) continue;
+                var adaptor = child.GetComponent<LowEndMaterialAdaptor>();
+                if (child.sharedMaterial == null || child.sharedMaterial.shader == null)
+                {
+                    if (adaptor != null && adaptor.originMaterial != null) child.sharedMaterial = adaptor.originMaterial;
+                    else continue;
+                }
                 if (Array.Exists(config.ignoreMaterials, (mat) => mat == child.sharedMaterial)) continue;
                 if (Array.Exists(config.ignoreShaderNames, (name) => child.sharedMaterial.shader.name.ToLower().Contains(name))) continue;
-                var adaptor = child.GetComponent<LowEndMaterialAdaptor>();
                 if (adaptor == null) adaptor = child.gameObject.AddComponent<LowEndMaterialAdaptor>();
                 if (adaptor.lowEndMaterial == null)
                 {
@@ -585,15 +591,15 @@ public class LowEndMaterialAdaptorEditor : Editor
             foreach (var adaptor in adaptors)
             {
                 var child = adaptor.GetComponent<Renderer>();
-                if (child != null)
+                if (child != null && adaptor.lowEndMaterial != null)
                 {
-                    child.sharedMaterial = adaptor.originMaterial;
-                    if (adaptor.lowEndMaterial != null)
+                    if (child.sharedMaterial == adaptor.lowEndMaterial)
                     {
-                        var assetPath = AssetDatabase.GetAssetPath(adaptor.lowEndMaterial);
-                        AssetDatabase.DeleteAsset(assetPath);
-                        adaptor.lowEndMaterial = null;
+                        child.sharedMaterial = adaptor.originMaterial;
                     }
+                    var assetPath = AssetDatabase.GetAssetPath(adaptor.lowEndMaterial);
+                    AssetDatabase.DeleteAsset(assetPath);
+                    adaptor.lowEndMaterial = null;
                 }
                 DestroyImmediate(adaptor);
             }
