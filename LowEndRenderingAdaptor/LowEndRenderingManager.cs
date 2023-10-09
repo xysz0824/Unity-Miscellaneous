@@ -23,14 +23,14 @@ public class LowEndRenderingManager : MonoBehaviour
             {
                 for (int i = 0; i < count; ++i)
                 {
-                    adaptors[i].Active();
+                    adaptors[i]?.Active();
                 }
             }
             else
             {
                 for (int i = 0; i < count; ++i)
                 {
-                    adaptors[i].Disactive();
+                    adaptors[i]?.Disactive();
                 }
             }
         }

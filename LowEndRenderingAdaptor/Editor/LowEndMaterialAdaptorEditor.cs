@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using System.IO;
+using UnityEditor.SceneManagement;
 
 [CustomEditor(typeof(LowEndMaterialAdaptor))]
 public class LowEndMaterialAdaptorEditor : Editor
@@ -308,9 +309,8 @@ public class LowEndMaterialAdaptorEditor : Editor
             var children = gameObject.GetComponentsInChildren<LowEndMaterialAdaptor>(true);
             foreach (var child in children)
             {
-                if (child.lowEndMaterial == null) continue;
-                var texture = child.lowEndMaterial.mainTexture as Texture2D;
-                if (texture == null) texture = GetMainTexture(config.propertyMappingRule, child.originMaterial) as Texture2D;
+                if (child.lowEndMaterial == null || child.originMaterial == null) continue;
+                var texture = GetMainTexture(config.propertyMappingRule, child.originMaterial) as Texture2D;
                 if (texture == null || texture.name.StartsWith("Packed")) continue;
                 if (Array.Exists(config.ignorePackTextures, (tex) => tex == texture)) continue;
                 if (!dict.ContainsKey(texture))
@@ -377,6 +377,8 @@ public class LowEndMaterialAdaptorEditor : Editor
                 material.mainTextureScale = (rects[i].size * size - new Vector2(2.0f, 2.0f)) / size;
             }
         }
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
         EditorGUIUtility.PingObject(packed);
         Debug.Log($"Main textures packed.");
     }
@@ -394,6 +396,18 @@ public class LowEndMaterialAdaptorEditor : Editor
     {
         var toLower = prefabPath.ToLower();
         return toLower.EndsWith("fbx") || toLower.EndsWith("obj");
+    }
+    static UnityEngine.Object FindApplyTargetAssetObject(PrefabOverride po, string prefabAssetPath)
+    {
+        var assetObject = po.GetAssetObject();
+        while (assetObject != null)
+        {
+            string assetPath = AssetDatabase.GetAssetPath(assetObject);
+            if (assetPath == prefabAssetPath)
+                return assetObject;
+            assetObject = PrefabUtility.GetCorrespondingObjectFromSource(assetObject);
+        }
+        return null;
     }
     [MenuItem("Tools/Low-End Rendering Adaptor/Apply Material Adaptor To Nearest Prefab", false, 11)]
     public static void ApplyToNearestPrefab()
@@ -451,6 +465,7 @@ public class LowEndMaterialAdaptorEditor : Editor
             }
         }
         var appliedPaths = new List<string>();
+        string exceptionSource = "";
         try
         {
             AssetDatabase.StartAssetEditing();
@@ -462,6 +477,7 @@ public class LowEndMaterialAdaptorEditor : Editor
                 foreach (var child in kv.Value)
                 {
                     if (upperModified.Contains(child)) continue;
+                    exceptionSource = $"{kv.Key.name} : {child.gameObject.name} {prefabPath}";
                     long localID = 0;
                     AssetDatabase.TryGetGUIDAndLocalFileIdentifier(PrefabUtility.GetCorrespondingObjectFromSourceAtPath(child, prefabPath).gameObject, out _, out localID);
                     var path = prefabPath + "_" + localID;
@@ -472,6 +488,18 @@ public class LowEndMaterialAdaptorEditor : Editor
                             var removedComponent = removedComponents[i];
                             if (removedComponent.containingInstanceGameObject.transform == child.transform && removedComponent.assetComponent.GetType() == typeof(LowEndMaterialAdaptor))
                             {
+                                var nearestRoot = kv.Key;
+                                while (FindApplyTargetAssetObject(removedComponent, prefabPath) == null && nearestRoot.transform.parent != null)
+                                {
+                                    var parentIsRoot = PrefabUtility.IsAnyPrefabInstanceRoot(nearestRoot.transform.parent.gameObject);
+                                    nearestRoot = parentIsRoot ? nearestRoot.transform.parent.gameObject : PrefabUtility.GetNearestPrefabInstanceRoot(nearestRoot.transform.parent);
+                                    prefabPath = parentIsRoot ? GetPrefabInstanceAssetPath(nearestRoot.transform.gameObject) : PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(nearestRoot.transform);
+                                    if (!string.IsNullOrEmpty(prefabPath))
+                                    {
+                                        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(PrefabUtility.GetCorrespondingObjectFromSourceAtPath(child, prefabPath).gameObject, out _, out localID);
+                                        path = prefabPath + "_" + localID;
+                                    }
+                                }
                                 removedComponent.Apply(prefabPath, InteractionMode.AutomatedAction);
                             }
                         }
@@ -487,6 +515,11 @@ public class LowEndMaterialAdaptorEditor : Editor
                     }
                 }
             }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e);
+            Debug.LogError(exceptionSource);
         }
         finally
         {
@@ -581,6 +614,59 @@ public class LowEndMaterialAdaptorEditor : Editor
             }
         }
     }
+    [MenuItem("Tools/Low-End Rendering Adaptor/Find Material Missing Adaptor", false, 11)]
+    public static void FindMaterialMissingAdaptor()
+    {
+        var gameObjects = Selection.gameObjects;
+        foreach (var gameObject in gameObjects)
+        {
+            var adaptors = gameObject.GetComponentsInChildren<LowEndMaterialAdaptor>(true);
+            foreach (var adaptor in adaptors)
+            {
+                if (adaptor.lowEndMaterial == null)
+                {
+                    Debug.LogError($"{adaptor.gameObject.name} has material missing adaptors");
+                }
+            }
+        }
+    }
+    [MenuItem("Tools/Low-End Rendering Adaptor/Delete Material Missing Adaptor", false, 11)]
+    public static void DeleteMaterialMissingAdaptor()
+    {
+        var gameObjects = Selection.gameObjects;
+        try
+        {
+            AssetDatabase.StartAssetEditing();
+            foreach (var gameObject in gameObjects)
+            {
+                var adaptors = gameObject.GetComponentsInChildren<LowEndMaterialAdaptor>(true);
+                foreach (var adaptor in adaptors)
+                {
+                    if (adaptor.lowEndMaterial == null)
+                    {
+                        DestroyImmediate(adaptor);
+                    }
+                }
+                var removedComponents = PrefabUtility.GetRemovedComponents(gameObject);
+                for (int i = 0; i < removedComponents.Count; ++i)
+                {
+                    var nearestRoot = removedComponents[i].containingInstanceGameObject;
+                    var prefabPath = GetPrefabInstanceAssetPath(nearestRoot);
+                    while (FindApplyTargetAssetObject(removedComponents[i], prefabPath) == null && nearestRoot.transform.parent != null)
+                    {
+                        var parentIsRoot = PrefabUtility.IsAnyPrefabInstanceRoot(nearestRoot.transform.parent.gameObject);
+                        nearestRoot = parentIsRoot ? nearestRoot.transform.parent.gameObject : PrefabUtility.GetNearestPrefabInstanceRoot(nearestRoot.transform.parent);
+                        prefabPath = parentIsRoot ? GetPrefabInstanceAssetPath(nearestRoot.transform.gameObject) : PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(nearestRoot.transform);
+                    }
+                    removedComponents[i].Apply(prefabPath, InteractionMode.AutomatedAction);
+                }
+            }
+        }
+        finally
+        {
+            AssetDatabase.StopAssetEditing();
+        }
+    }
     [MenuItem("Tools/Low-End Rendering Adaptor/Delete Material Adaptor", false, 11)]
     public static void DeleteAdaptorAndMaterial()
     {
@@ -590,6 +676,11 @@ public class LowEndMaterialAdaptorEditor : Editor
             var adaptors = gameObject.GetComponentsInChildren<LowEndMaterialAdaptor>(true);
             foreach (var adaptor in adaptors)
             {
+                var siblings = adaptor.gameObject.GetComponents<LowEndMaterialAdaptor>();
+                if (siblings.Length >= 2)
+                {
+                    Debug.LogError($"{adaptor.gameObject.name} has two or more adaptors");
+                }
                 var child = adaptor.GetComponent<Renderer>();
                 if (child != null && adaptor.lowEndMaterial != null)
                 {
@@ -604,6 +695,8 @@ public class LowEndMaterialAdaptorEditor : Editor
                 DestroyImmediate(adaptor);
             }
         }
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
         Debug.Log($"Low-End Material Deleted.");
     }
 }

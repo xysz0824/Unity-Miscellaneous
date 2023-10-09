@@ -47,6 +47,8 @@ MonoBehaviour:
     _AlphaClip -> _Cutoff
 
     _TwoSided -> _Cull'
-  keywordMappingRule: ALPHATEST_ON -> _ALPHATEST_ON
+  keywordMappingRule: 'ALPHATEST_ON -> _ALPHATEST_ON
+
+    EMISSION_ON -> _EMISSION'
   excludeProperties:
   - _GIColor
