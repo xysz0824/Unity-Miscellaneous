@@ -13,7 +13,8 @@ public class PrefabLightmapInfo : MonoBehaviour
     static Dictionary<string, Action> enableTriggers = new Dictionary<string, Action>();
     static Dictionary<string, Action> disableTriggers = new Dictionary<string, Action>();
     static LightmapData[] lightmaps = new LightmapData[0];
-    static Dictionary<int, int> refs = new Dictionary<int, int>();
+    static Dictionary<int, int> referenceCounts = new Dictionary<int, int>();
+    static Dictionary<int, List<Renderer>> referencers = new Dictionary<int, List<Renderer>>();
 
     public string infoTag = "";
     public Texture2D lightmap;
@@ -126,16 +127,18 @@ public class PrefabLightmapInfo : MonoBehaviour
             lightmapIndex = lightmaps.Length - 1;
             lightmaps[lightmapIndex] = new LightmapData();
             lightmaps[lightmapIndex].lightmapColor = lightmap;
-            refs[lightmapIndex] = 0;
+            referenceCounts[lightmapIndex] = 0;
+            referencers[lightmapIndex] = new List<Renderer>();
             MergeToLightmapSettings(null);
         }
-        refs[lightmapIndex]++;
+        referenceCounts[lightmapIndex]++;
         var thisRenderer = GetComponent<Renderer>();
         if (thisRenderer != null)
         {
             lightmapIndex = Array.FindIndex(LightmapSettings.lightmaps, (data) => data.lightmapColor == lightmap);
             thisRenderer.lightmapIndex = lightmapIndex;
             thisRenderer.lightmapScaleOffset = scaleOffset;
+            referencers[lightmapIndex].Add(thisRenderer);
         }
     }
 
@@ -145,13 +148,19 @@ public class PrefabLightmapInfo : MonoBehaviour
         var lightmapIndex = Array.FindIndex(lightmaps, (data) => data.lightmapColor == lightmap);
         if (lightmapIndex >= 0)
         {
-            refs[lightmapIndex]--;
-            if (refs[lightmapIndex] == 0)
+            referenceCounts[lightmapIndex]--;
+            if (referenceCounts[lightmapIndex] == 0)
             {
-                refs.Remove(lightmapIndex);
+                referencers[lightmapIndex] = referencers[lightmaps.Length - 1];
+                foreach (var renderer in referencers[lightmapIndex])
+                {
+                    if (renderer != null)
+                        renderer.lightmapIndex = lightmapIndex;
+                }
+                referencers.Remove(lightmaps.Length - 1);
+                referenceCounts.Remove(lightmaps.Length - 1);
                 var temp = lightmaps[lightmapIndex];
                 lightmaps[lightmapIndex] = lightmaps[lightmaps.Length - 1];
-                lightmaps[lightmaps.Length - 1] = temp;
                 Array.Resize(ref lightmaps, lightmaps.Length - 1);
                 MergeToLightmapSettings(temp);
             }
