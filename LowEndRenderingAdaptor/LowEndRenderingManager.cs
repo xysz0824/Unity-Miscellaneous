@@ -37,9 +37,9 @@ public class LowEndRenderingManager : MonoBehaviour
             }
         }
     }
-    public void Join(LowEndRenderingAdaptor adaptor)
+    public bool Join(LowEndRenderingAdaptor adaptor)
     {
-        if (!adaptor.IsValid()) return;
+        if (!adaptor.IsValid()) return false;
         adaptor.index = count;
         adaptors[count++] = adaptor;
         if (count >= adaptors.Length)
@@ -57,11 +57,13 @@ public class LowEndRenderingManager : MonoBehaviour
                 adaptor.Disactive();
             }
         }
+        return true;
     }
     public void Quit(LowEndRenderingAdaptor adaptor)
     {
-        adaptors[count - 1].index = adaptor.index;
         adaptors[adaptor.index] = adaptors[count - 1];
+        adaptors[adaptor.index].index = adaptor.index;
+        adaptor.index = -1;
         adaptors[count - 1] = null;
         count--;
     }

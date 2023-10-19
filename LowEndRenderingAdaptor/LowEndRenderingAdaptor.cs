@@ -6,17 +6,23 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class LowEndRenderingAdaptor : MonoBehaviour
 {
+    private bool joined;
     [NonSerialized]
     public int index = -1;
     void OnEnable()
     {
         if (LowEndRenderingManager.Instance != null)
-            LowEndRenderingManager.Instance.Join(this);
+        {
+            joined = LowEndRenderingManager.Instance.Join(this);
+        }
     }
     void OnDisable()
     {
-        if (LowEndRenderingManager.Instance != null)
+        if (LowEndRenderingManager.Instance != null && joined)
+        {
             LowEndRenderingManager.Instance.Quit(this);
+            joined = false;
+        }
     }
     public virtual bool IsValid()
     {
