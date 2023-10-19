@@ -23,14 +23,16 @@ public class LowEndRenderingManager : MonoBehaviour
             {
                 for (int i = 0; i < count; ++i)
                 {
-                    adaptors[i]?.Active();
+                    if (adaptors[i] != null) 
+                        adaptors[i].Active();
                 }
             }
             else
             {
                 for (int i = 0; i < count; ++i)
                 {
-                    adaptors[i]?.Disactive();
+                    if (adaptors[i] != null)
+                        adaptors[i].Disactive();
                 }
             }
         }
@@ -58,10 +60,9 @@ public class LowEndRenderingManager : MonoBehaviour
     }
     public void Quit(LowEndRenderingAdaptor adaptor)
     {
-        if (adaptor == null || adaptor.index < 0 || adaptor.index >= count) return;
+        adaptors[count - 1].index = adaptor.index;
         adaptors[adaptor.index] = adaptors[count - 1];
         adaptors[count - 1] = null;
-        adaptor.index = -1;
         count--;
     }
 }
