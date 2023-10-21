@@ -63,6 +63,10 @@ public class LowEndPipelineSwitcher : MonoBehaviour
             Switch(lastCamera);
             return;
         }
+        if (allCameras.Length < Camera.allCamerasCount)
+        {
+            Array.Resize(ref allCameras, Camera.allCamerasCount);
+        }
         int count = Camera.GetAllCameras(allCameras);
         if (count <= 1) return;
         for (int i = 1; i < count; ++i)

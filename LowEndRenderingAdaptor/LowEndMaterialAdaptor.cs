@@ -14,7 +14,7 @@ public class LowEndMaterialAdaptor : LowEndRenderingAdaptor
     }
     public override void Active()
     {
-        if (thisRenderer == null) thisRenderer = GetComponent<Renderer>();
+        if (thisRenderer == null && this != null) thisRenderer = GetComponent<Renderer>();
         if (thisRenderer != null && thisRenderer.sharedMaterial != lowEndMaterial)
         {
             thisRenderer.sharedMaterial = lowEndMaterial;
