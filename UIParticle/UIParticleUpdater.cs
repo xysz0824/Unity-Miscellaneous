@@ -70,13 +70,11 @@ namespace Coffee.UIExtensions
 #if UNITY_EDITOR
         private static void DestroyNativeContainer(UnityEditor.PlayModeStateChange state)
         {
-            if (state == UnityEditor.PlayModeStateChange.ExitingPlayMode)
+            if (state == UnityEditor.PlayModeStateChange.ExitingPlayMode || state == UnityEditor.PlayModeStateChange.ExitingEditMode)
                 DestroyNativeContainer();
         }
-        [UnityEditor.Callbacks.DidReloadScripts]
         private static void DestroyNativeContainer()
         {
-            Canvas.willRenderCanvases -= Refresh;
             UnityEditor.EditorApplication.playModeStateChanged -= DestroyNativeContainer;
             s_ActiveParticles.Clear();
             if (particleSystemNatives != null)
