@@ -5,7 +5,7 @@ using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Profiling;
 using Unity.Jobs;
-using Unity.Collections.LowLevel.Unsafe;
+using System.Linq;
 
 namespace Coffee.UIExtensions
 {
@@ -114,10 +114,26 @@ namespace Coffee.UIExtensions
             }
         }
 #endif
+        private static void SortParticles()
+        {
+            for (int i = 1; i < s_ActiveParticles.Count; i++)
+            {
+                var key = s_ActiveParticles[i];
+                for (int j = i - 1; j >= 0; j--)
+                {
+                    if (key.meshSharingID < s_ActiveParticles[j].meshSharingID)
+                    {
+                        s_ActiveParticles[j + 1] = s_ActiveParticles[j];
+                        s_ActiveParticles[j] = key;
+                    }
+                    else break;
+                }
+            }
+        }
         private static void Refresh()
         {
             Profiler.BeginSample("[UIParticle] Refresh");
-            s_ActiveParticles.Sort(CompareMeshSharingID);
+            SortParticles();
             for (var i = 0; i < s_ActiveParticles.Count; i++)
             {
                 try
@@ -132,9 +148,9 @@ namespace Coffee.UIExtensions
             Profiler.EndSample();
         }
 
-        static int CompareMeshSharingID(UIParticle a, UIParticle b)
+        static int CompareMeshSharingID(UIParticle a)
         {
-            return a.meshSharingID - b.meshSharingID;
+            return a.meshSharingID;
         }
 
         static bool HasDisabledCanvas(Transform trans)
@@ -165,9 +181,13 @@ namespace Coffee.UIExtensions
             ModifyScale(particle);
             Profiler.EndSample();
 
+#if UNITY_EDITOR
+            try
+            {
+#endif
             Profiler.BeginSample("[UIParticle] Bake mesh");
-            if (particle.boostByJobSystem) BakeMeshPerformant(particle, last);
-            else BakeMesh(particle);
+            if (particle.boostByJobSystem) particle.refreshed = BakeMeshPerformant(particle, last);
+            else particle.refreshed = BakeMesh(particle);
             Profiler.EndSample();
 
             Profiler.BeginSample("[UIParticle] Set mesh to CanvasRenderer");
@@ -177,8 +197,14 @@ namespace Coffee.UIExtensions
             Profiler.BeginSample("[UIParticle] Update Animatable Material Properties");
             particle.UpdateMaterialProperties();
             Profiler.EndSample();
-
-            particle.refreshed = true;
+#if UNITY_EDITOR
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(particle.gameObject.name);
+                throw e;
+            }
+#endif
         }
 
         private static void ModifyScale(UIParticle particle)
@@ -223,7 +249,7 @@ namespace Coffee.UIExtensions
             }
         }
 
-        private static void BakeMesh(UIParticle particle)
+        private static bool BakeMesh(UIParticle particle)
         {
             // Clear mesh before bake.
             Profiler.BeginSample("[UIParticle] Bake Mesh > Clear Mesh");
@@ -252,6 +278,7 @@ namespace Coffee.UIExtensions
             Profiler.EndSample();
 
             Profiler.BeginSample("[UIParticle] Bake Mesh > BakeMesh");
+            bool baked = false;
             for (var i = 0; i < particle.particles.Count; i++)
             {
                 // No particle to render.
@@ -306,7 +333,9 @@ namespace Coffee.UIExtensions
                     if (hash != 0)
                     {
                         var m = MeshHelper.GetTemporaryMesh();
+                        m.Clear(false);
                         r.BakeMesh(m, camera, true);
+                        baked = true;
                         MeshHelper.Push(i * 2, hash, m, matrix);
                     }
 
@@ -319,9 +348,11 @@ namespace Coffee.UIExtensions
                     if (hash != 0)
                     {
                         var m = MeshHelper.GetTemporaryMesh();
+                        m.Clear(false);
                         try
                         {
                             r.BakeTrailsMesh(m, camera, true);
+                            baked = true;
                             MeshHelper.Push(i * 2 + 1, hash, m, matrix);
                         }
                         catch
@@ -347,6 +378,7 @@ namespace Coffee.UIExtensions
                 particle.bakedMesh.ModifyColorSpaceToLinear();
                 Profiler.EndSample();
             }
+            return baked;
         }
 
         private static bool CanBakeMesh(ParticleSystemRenderer renderer)
@@ -408,7 +440,7 @@ namespace Coffee.UIExtensions
             }
         }
 
-        private static void BakeMeshPerformant(UIParticle particle, UIParticle last)
+        private static bool BakeMeshPerformant(UIParticle particle, UIParticle last)
         {
             var particles = particle.particles;
             var particleRenderers = particle.particleRenderers;
@@ -422,7 +454,7 @@ namespace Coffee.UIExtensions
                 }
                 activeParticles++;
             }
-            if (activeParticles == 0) return;
+            if (activeParticles == 0) return false;
 #if !UNITY_EDITOR
             if (!particle.boostByJobSystem || particle.syncTransform)
 #endif
@@ -619,6 +651,7 @@ namespace Coffee.UIExtensions
 
             Profiler.BeginSample("[UIParticle] Bake Mesh > Copy To Mesh");
             long activeMeshIndices = 0;
+            bool baked = false;
             if (!meshSharing)
             {
                 if (!cachedVertexTotal.ContainsKey(particle) || cachedVertexTotal[particle] > vertexTotal)
@@ -646,6 +679,7 @@ namespace Coffee.UIExtensions
                     particle.bakedMesh.SetIndices(meshJob.indices, indexTotal, indexCount, MeshTopology.Triangles, subMeshIndex++, true, 0);
                     activeMeshIndices |= (long)1 << (i * 2);
                     indexTotal += indexCount;
+                    baked = true;
                     if (ps.trails.enabled && r.trailMaterial != null)
                     {
                         indexCount = bakedIndexMap[i * 2 + 1].Value;
@@ -659,15 +693,15 @@ namespace Coffee.UIExtensions
             {
                 if (particles.Count != last.particles.Count)
                 {
-                    return;
+                    return false;
                 }
                 for (int i = 0; i < particles.Count; ++i)
                 {
                     var ps = particles[i];
                     var r = particleRenderers[i];
                     if (!CanBakeMesh(r)) continue;
-                    bool canBakeMeshPerformant = CanBakeMeshPerformant(r);
                     vertexTotal += bakedIndexMap[i * 2].Key;
+                    baked = true;
                     bool bakeTrail = ps.trails.enabled && r.trailMaterial != null;
                     if (bakeTrail)
                     {
@@ -706,6 +740,7 @@ namespace Coffee.UIExtensions
             }
             particle.activeMeshIndices = activeMeshIndices;
             Profiler.EndSample();
+            return baked;
         }
     }
 }
