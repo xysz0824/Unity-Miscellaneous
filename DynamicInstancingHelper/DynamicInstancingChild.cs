@@ -14,41 +14,48 @@ public class DynamicInstancingChild : MonoBehaviour
     public Material Material => material;
     long resourceID;
     public long ResourceID => resourceID;
-    DynamicInstancingCollection collection;
+    MeshFilter meshFilter;
+    MeshRenderer meshRenderer;
     public bool syncTransform;
     public int layer;
     public ShadowCastingMode shadowCastingMode = ShadowCastingMode.On;
     public bool receiveShadows = true;
-    public bool enableInLowEnd;
+    public bool enableInLowEnd = true;
     [NonSerialized]
     public int childrenID = -1;
     [NonSerialized]
     public int boundingID = -1;
     [NonSerialized]
     public bool visible = true;
-    void OnEnable()
+    [NonSerialized]
+    public int syncDelay = 0;
+    public bool Init()
     {
-        if (!SystemInfo.supportsInstancing || !DynamicInstancingRenderer.Instance) return;
-        if (Shader.globalMaximumLOD <= DynamicInstancingRenderer.Instance.lodThreshold && !enableInLowEnd) return;
-        var meshFilter = GetComponent<MeshFilter>();
+        if (!SystemInfo.supportsInstancing || !DynamicInstancingRenderer.Instance) return false;
+        if (!enableInLowEnd && Shader.globalMaximumLOD <= DynamicInstancingRenderer.Instance.lodThreshold) return false;;
+        if (meshFilter == null) meshFilter = GetComponent<MeshFilter>();
         mesh = meshFilter?.sharedMesh;
-        var meshRenderer = GetComponent<MeshRenderer>();
+        if (meshRenderer == null) meshRenderer = GetComponent<MeshRenderer>();
         material = meshRenderer?.sharedMaterial;
         if (mesh == null || material == null)
         {
             Debug.LogError($"Instancing object \"{name}\" has null resource.");
-            return;
+            return false;
         }
-        resourceID = GetResourceID();
         if (!material.enableInstancing)
         {
             Debug.LogWarning($"Material \"{material.name}\" doesn't enable instancing.");
-            return;
+            return false;
         }
+        resourceID = GetResourceID();
+        return true;
+    }
+    void OnEnable()
+    {
+        if (!Init()) return;
         DynamicInstancingRenderer.Instance.Join(this);
+        syncDelay = DynamicInstancingRenderer.Instance.syncDelay;
         meshRenderer.enabled = false;
-        collection = GetComponentInParent<DynamicInstancingCollection>();
-        if (collection != null) collection.AddChild(this);
     }
     void Start()
     {
@@ -62,21 +69,6 @@ public class DynamicInstancingChild : MonoBehaviour
         if (DynamicInstancingRenderer.Instance != null)
         {
             DynamicInstancingRenderer.Instance.Quit(this);
-            var meshRenderer = GetComponent<MeshRenderer>();
-            if (meshRenderer != null)
-            {
-                meshRenderer.enabled = true;
-            }
-            if (collection != null) collection.RemoveChild(this);
-        }
-    }
-    void OnTransformChildrenChanged()
-    {
-        if (DynamicInstancingRenderer.Instance != null)
-        {
-            if (collection != null) collection.RemoveChild(this);
-            collection = GetComponentInParent<DynamicInstancingCollection>();
-            if (collection != null) collection.AddChild(this);
         }
     }
     void OnDestroy()
