@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
-using NexgenDragon;
 using UnityEngine;
 
-
-public class PrefabProxyManager : MonoSingleton<PrefabProxyManager>
+public class PrefabProxyManager : Singleton<PrefabProxyManager>
 {
     HashSet<IPrefabProxy> proxies = new HashSet<IPrefabProxy>();
     public HashSet<IPrefabProxy> Proxies => proxies;
